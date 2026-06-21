@@ -1,0 +1,6 @@
+requests
+zstandard
+python-chess
+pandas
+numpy
+scikit-learn

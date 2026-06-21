@@ -1,0 +1,9 @@
+task,horizon/model_name,config_name,use_history,use_player_identity,use_clock,C,roc_auc,log_loss,brier,accuracy,white_mae,black_mae,avg_mae,white_rmse,black_rmse,white_r2,black_r2
+classification,white_win_before,selected_before_no_clock,False,False,False,1.0,0.5464225140712946,0.6855994377888326,0.24660781277467084,0.522,,,,,,,
+classification,white_win_after_3,selected_after3_no_clock,False,True,False,0.25,0.5452878048780487,0.6891735321475796,0.24830665923651282,0.5235,,,,,,,
+classification,white_win_after_3,selected_after3_with_clock,False,True,True,0.25,0.5437768605378361,0.6878578247074929,0.24794507270586283,0.525,,,,,,,
+classification,white_win_after_10,selected_after10_no_clock,False,False,False,0.25,0.5636993120700438,0.6885823382567637,0.24779389061750975,0.5455,,,,,,,
+classification,white_win_after_10,selected_after10_with_clock,False,False,True,0.25,0.5770056285178237,0.6855046875202797,0.24635001835690787,0.544,,,,,,,
+classification,white_win_after_10,after10_identity_with_clock,False,True,True,0.25,0.5771687304565353,0.6863129287971862,0.24667526967470177,0.55,,,,,,,
+regression,elo_after_10,selected_elo_no_clock,True,True,False,,,,,,147.2256961110268,148.9867313576874,148.10621373435708,195.40269248867727,197.28985127858923,0.7191968693570007,0.7137632152354034
+regression,elo_after_10,selected_elo_with_clock,True,True,True,,,,,,148.43128042074432,150.91828659753713,149.67478350914072,202.58475508387724,205.56856280826207,0.6981755766871784,0.6892369656902337
