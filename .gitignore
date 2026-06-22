@@ -11,6 +11,4 @@ __pycache__/
 experiment/outputs/cache/
 experiment/stockfish_cache.json
 
-# New ad-hoc run outputs should be deliberately moved/indexed under artifacts/.
-outputs/
-outputs_*/
+

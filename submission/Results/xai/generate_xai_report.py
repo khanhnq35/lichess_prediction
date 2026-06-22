@@ -15,8 +15,13 @@ import numpy as np
 import pandas as pd
 
 
-ROOT = Path(__file__).resolve().parents[1]
-RESULTS_DIR = ROOT / "Results"
+SCRIPT_PATH = Path(__file__).resolve()
+if SCRIPT_PATH.parent.name == "xai" and SCRIPT_PATH.parent.parent.name == "Results":
+    RESULTS_DIR = SCRIPT_PATH.parent.parent
+    ROOT = RESULTS_DIR.parent
+else:
+    ROOT = SCRIPT_PATH.parents[1]
+    RESULTS_DIR = ROOT / "Results"
 XAI_DIR = RESULTS_DIR / "xai"
 METRICS_PATH = RESULTS_DIR / "metrics.json"
 PREDICTIONS_PATH = RESULTS_DIR / "validation_predictions.csv"
@@ -152,7 +157,33 @@ def prediction_examples(df: pd.DataFrame) -> list[dict[str, object]]:
     return examples
 
 
-def write_markdown_summary(metrics: dict, cal: pd.DataFrame, lift: dict, elo_segments: pd.DataFrame) -> None:
+def examples_to_markdown(examples: list[dict[str, object]]) -> str:
+    rows = [
+        "| note | game_index | result | p_white_win_before | p_white_win_after_10 | white_elo_abs_error | black_elo_abs_error |",
+        "|---|---:|---|---:|---:|---:|---:|",
+    ]
+    for example in examples:
+        rows.append(
+            "| {note} | {game_index} | {result} | {p_before:.4f} | {p_after10:.4f} | {w_err:.2f} | {b_err:.2f} |".format(
+                note=str(example["note"]).replace("|", "\\|"),
+                game_index=int(example["game_index"]),
+                result=str(example["result"]),
+                p_before=float(example["p_white_win_before"]),
+                p_after10=float(example["p_white_win_after_10"]),
+                w_err=float(example["white_elo_abs_error"]),
+                b_err=float(example["black_elo_abs_error"]),
+            )
+        )
+    return "\n".join(rows)
+
+
+def write_markdown_summary(
+    metrics: dict,
+    cal: pd.DataFrame,
+    lift: dict,
+    elo_segments: pd.DataFrame,
+    examples: list[dict[str, object]],
+) -> None:
     models = metrics["models"]
     baselines = metrics["baselines"]
     dataset = metrics["dataset_summary"]
@@ -162,6 +193,12 @@ def write_markdown_summary(metrics: dict, cal: pd.DataFrame, lift: dict, elo_seg
         "",
         "This report explains the final validation outputs using only submission-local files.",
         "It is not a SHAP report and does not require fitted model objects.",
+        "",
+        "## Scope and Limitations",
+        "",
+        "This is output-level XAI, not SHAP, LIME, or exact feature-attribution XAI. It analyzes the behavior of saved validation predictions rather than introspecting fitted model internals.",
+        "",
+        "The report can analyze probability calibration, lift/ranking behavior, Elo error segments, representative success/failure examples, and validation-level behavior. It cannot provide exact per-feature attribution because the submitted package does not require fitted model objects, SHAP/LIME dependencies, Stockfish, raw PGN files, or model refitting.",
         "",
         "## Dataset Context",
         "",
@@ -197,12 +234,20 @@ def write_markdown_summary(metrics: dict, cal: pd.DataFrame, lift: dict, elo_seg
         "",
         elo_segments.to_markdown(index=False),
         "",
+        "## Representative Prediction Examples",
+        "",
+        "The script also exports the full examples to `prediction_examples.json`. The table below summarizes the same representative validation rows.",
+        "",
+        examples_to_markdown(examples),
+        "",
+        "These examples show that confidence can be useful but is not perfect. Future mistakes, tactical swings, or time-pressure collapses after move 10 are not visible to the model. Elo prediction can be extremely accurate for repeat or history-rich players, but it can fail badly for sparse-history players or unusual rating-band cases.",
+        "",
         "## Interpretation",
         "",
         "- Pre-game prediction is dominated by Elo difference and stays close to the Elo expected-score baseline.",
         "- After-10 prediction gains signal from observed board structure and clock/time-pressure features.",
         "- Elo prediction is very strong because causal player-history features are highly predictive for repeat players.",
-        "- For completely unseen players, the Elo model should be expected to degrade toward weaker history-free behavior.",
+        "- The Elo model should be interpreted as a same-stream rating reconstruction model rather than a pure cold-start Elo estimator. Its strongest signal comes from causal player history and repeat-player structure. This is leakage-safe because the history is computed only from earlier games, but the headline MAE is most reliable when the validation/test stream has similar player-overlap patterns.",
     ]
     (XAI_DIR / "xai_summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -221,11 +266,10 @@ def main() -> None:
     elo_segments.to_csv(XAI_DIR / "elo_error_segments.csv", index=False)
     (XAI_DIR / "lift_analysis_after10.json").write_text(json.dumps(lift, indent=2), encoding="utf-8")
     (XAI_DIR / "prediction_examples.json").write_text(json.dumps(examples, indent=2), encoding="utf-8")
-    write_markdown_summary(metrics, cal, lift, elo_segments)
+    write_markdown_summary(metrics, cal, lift, elo_segments, examples)
 
     print(f"Wrote XAI artifacts to {XAI_DIR}")
 
 
 if __name__ == "__main__":
     main()
-

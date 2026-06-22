@@ -4,18 +4,20 @@ This folder contains the final organized submission materials for the Lichess Bl
 
 ## Contents
 
-- `Problem_definition.md`: task interpretation, assumptions, and leakage constraints.
-- `Research.md`: modeling options considered.
-- `Experiment.md`: experiments and results.
-- `Proposal_pipeline.md`: final selected pipeline.
 - `Solution.py`: reproducible Python pipeline.
 - `requirements.txt`: strict lightweight dependencies.
 - `requirements-experiments.txt`: optional LightGBM/XGBoost dependencies for the best no-Stockfish profile.
 - `Results/`: final full 100k metrics and validation predictions.
 - `Results/xai/`: generated calibration, lift, Elo error, and prediction-example analysis.
-- `scripts/generate_xai_report.py`: reproducible output-level XAI helper.
-- `Limitation_and_future_work.md`: limitations and next steps.
-- `AI_workflow.md`: AI usage disclosure.
+- `Results/xai/generate_xai_report.py`: reproducible output-level XAI helper.
+- `docs/00_quick_overview_report.md`: shortest overview and reading guide.
+- `docs/01_Problem_definition.md`: task interpretation, assumptions, and leakage constraints.
+- `docs/02_Research.md`: modeling options considered.
+- `docs/03_Experiment.md`: experiments and results.
+- `docs/04_Proposal_pipeline.md`: final selected pipeline.
+- `docs/05_results_report.md`: detailed final result analysis.
+- `docs/06_Limitation_and_future_work.md`: limitations and next steps.
+- `docs/07_AI_workflow.md`: AI usage disclosure.
 
 ## Run Strict Lightweight Profile
 
@@ -37,7 +39,7 @@ The boosting profile is the reported best no-Stockfish configuration.
 ## Regenerate XAI Outputs
 
 ```bash
-python scripts/generate_xai_report.py
+python Results/xai/generate_xai_report.py
 ```
 
 The script uses only `Results/metrics.json` and `Results/validation_predictions.csv`.

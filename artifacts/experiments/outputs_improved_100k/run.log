@@ -1,0 +1,85 @@
+Streaming https://database.lichess.org/standard/lichess_db_standard_rated_2023-01.pgn.zst
+Collected 5,000 eligible games from 10,904 parsed games
+Collected 10,000 eligible games from 21,826 parsed games
+Collected 15,000 eligible games from 32,707 parsed games
+Collected 20,000 eligible games from 43,576 parsed games
+Collected 25,000 eligible games from 54,250 parsed games
+Collected 30,000 eligible games from 64,861 parsed games
+Collected 35,000 eligible games from 75,659 parsed games
+Collected 40,000 eligible games from 86,723 parsed games
+Collected 45,000 eligible games from 97,782 parsed games
+Collected 50,000 eligible games from 108,789 parsed games
+Collected 55,000 eligible games from 119,755 parsed games
+Collected 60,000 eligible games from 130,527 parsed games
+Collected 65,000 eligible games from 141,406 parsed games
+Collected 70,000 eligible games from 152,428 parsed games
+Collected 75,000 eligible games from 163,483 parsed games
+Collected 80,000 eligible games from 174,596 parsed games
+Collected 85,000 eligible games from 185,754 parsed games
+Collected 90,000 eligible games from 196,612 parsed games
+Collected 95,000 eligible games from 207,568 parsed games
+Collected 100,000 eligible games from 218,647 parsed games
+Parsed games: 218,647
+Header-eligible games before move-length validation: 104,674
+Eligible games collected: 100,000
+
+Dataset summary
+Selected month: 2023-01
+Selected time-control: Blitz
+Eligible games: 100,000
+Train games: 80,000
+Validation games: 20,000
+Result distribution:
+result
+1-0        49814
+0-1        45870
+1/2-1/2     4316
+WhiteElo summary:
+count    100000.000000
+mean       1636.180790
+std         373.575201
+min         600.000000
+25%        1372.000000
+50%        1663.000000
+75%        1911.000000
+max        3008.000000
+BlackElo summary:
+count    100000.000000
+mean       1636.685570
+std         373.617668
+min         600.000000
+25%        1372.000000
+50%        1664.000000
+75%        1912.000000
+max        3004.000000
+
+[Improvement] Training Text Meta-Classifiers for Stacking...
+
+Fitting production baselines for comparison
+
+Running LightGBM/XGBoost classifiers
+Fitting white_win_before: lightgbm_conservative_before_history
+Fitting white_win_before: lightgbm_balanced_before_history
+Fitting white_win_before: xgboost_conservative_before_history
+Fitting white_win_before: xgboost_balanced_before_history
+Fitting white_win_after_3: lightgbm_conservative_after3_enhanced
+Fitting white_win_after_3: lightgbm_balanced_after3_enhanced
+Fitting white_win_after_3: xgboost_conservative_after3_enhanced
+Fitting white_win_after_3: xgboost_balanced_after3_enhanced
+Fitting white_win_after_10: lightgbm_conservative_after10_enhanced_clock
+Fitting white_win_after_10: lightgbm_balanced_after10_enhanced_clock
+Fitting white_win_after_10: xgboost_conservative_after10_enhanced_clock
+Fitting white_win_after_10: xgboost_balanced_after10_enhanced_clock
+
+Running LightGBM/XGBoost Elo regressors
+Fitting elo_after_10: lightgbm_conservative_elo_enhanced_history
+Fitting elo_after_10: lightgbm_balanced_elo_enhanced_history
+Fitting elo_after_10: xgboost_conservative_elo_enhanced_history
+Fitting elo_after_10: xgboost_balanced_elo_enhanced_history
+
+Saved boosting experiment results to outputs_improved_100k/experiment_results.csv
+Saved best configs to outputs_improved_100k/best_config.json
+Best white_win_before: xgboost_conservative_before_history
+Best white_win_after_3: production_logreg_identity_C0.25
+Best white_win_after_10: production_logreg_identity_clock_C0.25
+Best elo_after_10: lightgbm_balanced_elo_enhanced_history

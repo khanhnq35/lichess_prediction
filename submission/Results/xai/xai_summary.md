@@ -3,6 +3,12 @@
 This report explains the final validation outputs using only submission-local files.
 It is not a SHAP report and does not require fitted model objects.
 
+## Scope and Limitations
+
+This is output-level XAI, not SHAP, LIME, or exact feature-attribution XAI. It analyzes the behavior of saved validation predictions rather than introspecting fitted model internals.
+
+The report can analyze probability calibration, lift/ranking behavior, Elo error segments, representative success/failure examples, and validation-level behavior. It cannot provide exact per-feature attribution because the submitted package does not require fitted model objects, SHAP/LIME dependencies, Stockfish, raw PGN files, or model refitting.
+
 ## Dataset Context
 
 - Validation games: `20,000`.
@@ -55,9 +61,24 @@ The after-10 model is useful for ranking games: the highest-probability bucket h
 | 2200-2599  |     900 |     39.8465 |     36.3671 |   38.1068 |     120.276  |     116.278  |        10.5744  |         61.5476 |         705.351 |
 | 2600+      |      39 |    148.86   |    143.656  |  146.258  |     285.556  |     259.088  |        79.1101  |        204.293  |        1114.07  |
 
+## Representative Prediction Examples
+
+The script also exports the full examples to `prediction_examples.json`. The table below summarizes the same representative validation rows.
+
+| note | game_index | result | p_white_win_before | p_white_win_after_10 | white_elo_abs_error | black_elo_abs_error |
+|---|---:|---|---:|---:|---:|---:|
+| High-confidence correct after-10 prediction | 206351 | 1-0 | 0.9001 | 0.9815 | 7.57 | 4.86 |
+| High-confidence miss | 176737 | 1-0 | 0.1128 | 0.0678 | 356.43 | 7.83 |
+| Largest after-10 probability increase relative to before-game | 206812 | 1-0 | 0.4917 | 0.9786 | 302.90 | 354.35 |
+| Largest after-10 probability decrease relative to before-game | 205020 | 0-1 | 0.6574 | 0.1690 | 594.32 | 320.95 |
+| Lowest Elo error example | 172641 | 0-1 | 0.4463 | 0.4271 | 0.13 | 0.07 |
+| Highest Elo error example | 186670 | 1-0 | 0.6434 | 0.6586 | 1327.98 | 1135.95 |
+
+These examples show that confidence can be useful but is not perfect. Future mistakes, tactical swings, or time-pressure collapses after move 10 are not visible to the model. Elo prediction can be extremely accurate for repeat or history-rich players, but it can fail badly for sparse-history players or unusual rating-band cases.
+
 ## Interpretation
 
 - Pre-game prediction is dominated by Elo difference and stays close to the Elo expected-score baseline.
 - After-10 prediction gains signal from observed board structure and clock/time-pressure features.
 - Elo prediction is very strong because causal player-history features are highly predictive for repeat players.
-- For completely unseen players, the Elo model should be expected to degrade toward weaker history-free behavior.
+- The Elo model should be interpreted as a same-stream rating reconstruction model rather than a pure cold-start Elo estimator. Its strongest signal comes from causal player history and repeat-player structure. This is leakage-safe because the history is computed only from earlier games, but the headline MAE is most reliable when the validation/test stream has similar player-overlap patterns.
