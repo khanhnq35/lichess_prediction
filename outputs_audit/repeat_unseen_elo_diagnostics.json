@@ -1,0 +1,77 @@
+{
+  "repeat_unseen_diagnostics": {
+    "both_players_seen_before": {
+      "group_name": "both_players_seen_before",
+      "count": 8019,
+      "pct": 40.095,
+      "white_mae": 7.23230973929416,
+      "black_mae": 6.972380017485639,
+      "avg_mae": 7.1023448783899,
+      "white_rmse": 15.608267250914617,
+      "black_rmse": 13.642054040761023,
+      "avg_rmse": 14.62516064583782,
+      "white_r2": 0.9980822252373197,
+      "black_r2": 0.998543219700103,
+      "avg_r2": 0.9983127224687114
+    },
+    "one_player_seen_before": {
+      "group_name": "one_player_seen_before",
+      "count": 8572,
+      "pct": 42.86,
+      "white_mae": 18.933991022197525,
+      "black_mae": 19.172502540846917,
+      "avg_mae": 19.05324678152222,
+      "white_rmse": 42.60235682583377,
+      "black_rmse": 44.65200958409345,
+      "avg_rmse": 43.627183204963615,
+      "white_r2": 0.9864820824623927,
+      "black_r2": 0.98505837808232,
+      "avg_r2": 0.9857702302723563
+    },
+    "both_players_unseen_before": {
+      "group_name": "both_players_unseen_before",
+      "count": 3409,
+      "pct": 17.044999999999998,
+      "white_mae": 95.49791346274037,
+      "black_mae": 94.60289047586485,
+      "avg_mae": 95.05040196930261,
+      "white_rmse": 184.75547973093342,
+      "black_rmse": 185.22333695743896,
+      "avg_rmse": 184.9894083441862,
+      "white_r2": 0.7510141409433534,
+      "black_r2": 0.7546352482235735,
+      "avg_r2": 0.7528246945834635
+    }
+  },
+  "history_diagnostics": {
+    "high_history_games": {
+      "group_name": "high_history_games",
+      "count": 3270,
+      "pct": 16.35,
+      "white_mae": 7.6715072939363145,
+      "black_mae": 7.40811219527195,
+      "avg_mae": 7.539809744604132,
+      "white_rmse": 12.4881867506844,
+      "black_rmse": 11.517214038036071,
+      "avg_rmse": 12.002700394360236,
+      "white_r2": 0.9985212696587956,
+      "black_r2": 0.9987675057686161,
+      "avg_r2": 0.9986443877137059
+    },
+    "low_history_games": {
+      "group_name": "low_history_games",
+      "count": 16730,
+      "pct": 83.65,
+      "white_mae": 31.127592407949027,
+      "black_mae": 30.994317626661154,
+      "avg_mae": 31.06095501730509,
+      "white_rmse": 89.28428062383313,
+      "black_rmse": 89.86421151134458,
+      "avg_rmse": 89.57424606758886,
+      "white_r2": 0.9409829991556595,
+      "black_r2": 0.9402921965122173,
+      "avg_r2": 0.9406375978339384
+    }
+  },
+  "timestamp": "2026-06-22T09:39:45.844705"
+}

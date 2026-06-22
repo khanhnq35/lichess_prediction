@@ -1,0 +1,150 @@
+{
+  "baselines": {
+    "elo_expected_score_baseline": {
+      "brier_score": 0.24186835684695096,
+      "log_loss": 0.6769362055772341,
+      "roc_auc": 0.5808504399707387
+    },
+    "elo_mean_baseline": {
+      "black_elo_mae": 312.13857975,
+      "black_elo_r2": -3.000307192735363e-05,
+      "black_elo_rmse": 380.69904141633,
+      "white_elo_mae": 311.124292625,
+      "white_elo_r2": -0.000193443087706191,
+      "white_elo_rmse": 377.9651299020726
+    },
+    "majority_class_baseline": {
+      "train_majority_class": 0,
+      "train_positive_rate": 0.4865,
+      "validation_accuracy": 0.4865,
+      "validation_positive_rate": 0.5135
+    }
+  },
+  "dataset_summary": {
+    "eligible_games": 10000,
+    "header_eligible_games": 10466,
+    "parsed_games": 21917,
+    "result_distribution": {
+      "0-1": 4636,
+      "1-0": 4919,
+      "1/2-1/2": 445
+    },
+    "train_games": 8000,
+    "train_positive_rate": 0.4865,
+    "validation_games": 2000,
+    "validation_positive_rate": 0.5135
+  },
+  "feature_notes": {
+    "causal_player_history_features": true,
+    "clock_features_limited_to_allowed_plies": true,
+    "clock_features_used_for": "white_win_after_10_only",
+    "elo_after_10": "history_and_identity_no_clock",
+    "enhanced_board_10k_verification": "not_selected_metric_regression",
+    "heavy_dependencies_added": false,
+    "history_features_computed_before_current_game_update": true,
+    "history_features_used_for": "elo_regression_only",
+    "identity_features_used_for": [
+      "white_win_after_3",
+      "white_win_after_10",
+      "elo_regression"
+    ],
+    "lightweight_enhanced_board_features_available": true,
+    "lightweight_enhanced_board_features_selected": false,
+    "player_identity_hashed_features": true,
+    "selected_configs_from_10k_experiments": true,
+    "stockfish_or_deep_learning_used": false,
+    "white_win_after_10": "player_identity_no_history_clock_C0.25",
+    "white_win_after_3": "player_identity_no_history_no_clock_C0.25",
+    "white_win_before": "baseline_no_history_no_identity_no_clock_C1.0"
+  },
+  "models": {
+    "elo_after_10_moves": {
+      "black_elo_mae": 153.28699690001125,
+      "black_elo_r2": 0.7200005965224741,
+      "black_elo_rmse": 201.44376106127416,
+      "white_elo_mae": 153.5233769442303,
+      "white_elo_r2": 0.7200625526348271,
+      "white_elo_rmse": 199.9586667058861
+    },
+    "white_win_after_10_moves": {
+      "accuracy": 0.592,
+      "brier_score": 0.23399603493821866,
+      "log_loss": 0.6589005042303847,
+      "roc_auc": 0.6372775753524318
+    },
+    "white_win_after_3_moves": {
+      "accuracy": 0.5455,
+      "brier_score": 0.24363530456680468,
+      "log_loss": 0.6828319638539875,
+      "roc_auc": 0.5773098588871287
+    },
+    "white_win_before_game": {
+      "accuracy": 0.55,
+      "brier_score": 0.2416684192865491,
+      "log_loss": 0.6756345133557382,
+      "roc_auc": 0.5845081064095726
+    }
+  },
+  "probability_diagnostics": {
+    "elo_expected_score_baseline": {
+      "max": 0.9905404124990876,
+      "mean": 0.5032953354276221,
+      "min": 0.0022856315733302854,
+      "p05": 0.33507794914381733,
+      "p50": 0.5,
+      "p95": 0.6814465591177568,
+      "std": 0.11720647587772272
+    },
+    "white_win_after_10": {
+      "max": 0.9769889798236581,
+      "mean": 0.4894886453999643,
+      "min": 0.011257383205898962,
+      "p05": 0.2785748603505202,
+      "p50": 0.4894127342593988,
+      "p95": 0.7000405130208484,
+      "std": 0.1291837617529848
+    },
+    "white_win_after_3": {
+      "max": 0.9997412411131797,
+      "mean": 0.4921311902707171,
+      "min": 0.017193750534735527,
+      "p05": 0.3636807821043974,
+      "p50": 0.48923242217093477,
+      "p95": 0.6295305022717614,
+      "std": 0.09532400109433574
+    },
+    "white_win_before": {
+      "max": 0.9427931627170666,
+      "mean": 0.4895782388940393,
+      "min": 0.022346785139162016,
+      "p05": 0.38128982632955105,
+      "p50": 0.4873774363245874,
+      "p95": 0.60231143032082,
+      "std": 0.0835285004973643
+    }
+  },
+  "run_config": {
+    "candidate_months": [
+      "2023-01",
+      "2023-02",
+      "2023-03",
+      "2023-04",
+      "2023-05",
+      "2023-06",
+      "2023-07",
+      "2023-08",
+      "2023-09",
+      "2023-10",
+      "2023-11",
+      "2023-12"
+    ],
+    "hashing_features": 32768,
+    "output_dir": "outputs_robustness/2023_03",
+    "random_seed": 42,
+    "runtime_seconds": 44.49552254099399,
+    "selected_month": "2023-03",
+    "target_games": 10000,
+    "time_control": "Blitz",
+    "train_ratio": 0.8
+  }
+}

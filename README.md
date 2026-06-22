@@ -59,12 +59,11 @@ Before-game white win features:
 - `initial_time_seconds`
 - `increment_seconds`
 - `log_initial_time_seconds`
-- Causal player-history features from earlier eligible games in the same stream
 
 After-3 and after-10 white win features:
 
 - All before-game features
-- First 3 or 10 full moves as SAN plus UCI text tokens
+- First 10 full moves as SAN plus UCI text tokens for the selected after-10 production model
 - Board features at the prediction point:
   - Material for each side
   - Material difference
@@ -80,12 +79,21 @@ After-3 and after-10 white win features:
   - Checks
   - Castles by color
   - Move counts by queen, king, knight, bishop, rook, and pawn
+- Optional lightweight enhanced board features at the prediction point:
+  - Piece-square table score
+  - Pawn structure
+  - King safety
+  - Piece mobility
+  - Development counts
+- Clock features from PGN comments within the allowed plies when selected
 
 After-10 Elo regression features:
 
 - First 10 full moves as SAN plus UCI text tokens
 - Board features after 10 full moves
 - Move-behavior features after 10 full moves
+- Causal player-history features from earlier eligible games in the same stream
+- Hashed player identity features
 - Time-control features
 - No `WhiteElo`, `BlackElo`, `elo_diff`, or `mean_elo`
 
@@ -115,7 +123,7 @@ The `--run-clock-experiments` mode additionally tests clock features parsed from
 
 ## Model Selection
 
-Lightweight 10k experiments were used to select the final production configuration while keeping the validation protocol fixed and leakage-safe.
+Lightweight 10k experiments and subsequent full-scale comparisons were used to select the current production configuration while keeping the validation protocol fixed and leakage-safe. Heavy exploratory results from `experiment/` that use Stockfish, PyTorch, LightGBM, XGBoost, or ensembles are not part of the production solution.
 
 Final selected models:
 
@@ -124,7 +132,7 @@ Final selected models:
 - White win after 10 moves: after-10 move/board features plus hashed player identity and `clk10_*` clock features, no history, `LogisticRegression(C=0.25)`.
 - Elo after 10 moves: after-10 move/board features plus causal history and hashed player identity, no clock, Ridge regression. Current `WhiteElo`, `BlackElo`, `elo_diff`, and `mean_elo` remain excluded.
 
-Clock features helped after-10 White-win prediction in the 10k experiment, but did not help after-3 or Elo regression. Causal history features helped Elo regression substantially, but did not help White-win classification. Hashed player identity is pre-game information; it helped after-3 slightly, helped after-10 when combined with clock, and helped Elo regression when combined with history.
+Clock features helped after-10 White-win prediction in the controlled 10k experiment, but not after-3 or Elo regression. Causal history features helped Elo regression substantially, but did not help White-win classification. Hashed player identity is pre-game information; it helped after-3 slightly, helped after-10 when combined with clock, and helped Elo regression when combined with history. Optional non-engine enhanced board features were implemented and tested, but the 10k verification run reduced after-10 ROC-AUC and Elo regression quality, so they are not selected in the default production feature sets.
 
 Identity and history features can perform better for repeat players than for completely unseen players. This is expected and should be considered when interpreting results outside the sampled Lichess month.
 

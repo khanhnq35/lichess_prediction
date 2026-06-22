@@ -1,30 +1,30 @@
 {
   "T1": {
-    "exp_id": "B1",
-    "model_name": "LogReg(C=1.0)",
-    "phase": "P1_Baseline",
-    "features": "base_before",
-    "best_auc": 0.5785723142892573
+    "exp_id": "F1",
+    "model_name": "LogReg(C=1.0)+Hist",
+    "phase": "P2_Enhanced",
+    "features": "before+history",
+    "best_auc": 0.5791852049610252
   },
   "T2": {
     "exp_id": "S1",
     "model_name": "Gradientboosting+SF",
     "phase": "P4_Stockfish",
     "features": "after3+enhanced+SF",
-    "best_auc": 0.5792958171832687
+    "best_auc": 0.5832273395052799
   },
   "T3": {
     "exp_id": "S2",
     "model_name": "Gradientboosting+SF",
     "phase": "P4_Stockfish",
     "features": "after10+enhanced+SF",
-    "best_auc": 0.6504756019024076
+    "best_auc": 0.6479581951528367
   },
   "T4": {
-    "exp_id": "T4_ran",
-    "model_name": "Randomforest",
-    "phase": "P3_Trees",
-    "features": "elo+enhanced",
-    "best_mae": 73.01612750000001
+    "exp_id": "S3",
+    "model_name": "Randomforest+SF",
+    "phase": "P4_Stockfish",
+    "features": "elo+enhanced+SF",
+    "best_mae": 26.4185075
   }
 }

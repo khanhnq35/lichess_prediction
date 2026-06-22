@@ -20,12 +20,14 @@ from pathlib import Path
 from typing import Any, Iterable
 
 import chess
+import chess.engine
 import chess.pgn
 import numpy as np
 import pandas as pd
 import requests
 import zstandard as zstd
 from sklearn.compose import ColumnTransformer
+from sklearn.ensemble import GradientBoostingClassifier, HistGradientBoostingClassifier, RandomForestRegressor
 from sklearn.feature_extraction.text import HashingVectorizer
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression, Ridge
@@ -73,6 +75,74 @@ PIECE_NAMES = {
     chess.KING: "kings",
 }
 CENTER_SQUARES = (chess.D4, chess.E4, chess.D5, chess.E5)
+PST_PAWN = [
+    0, 0, 0, 0, 0, 0, 0, 0,
+    50, 50, 50, 50, 50, 50, 50, 50,
+    10, 10, 20, 30, 30, 20, 10, 10,
+    5, 5, 10, 25, 25, 10, 5, 5,
+    0, 0, 0, 20, 20, 0, 0, 0,
+    5, -5, -10, 0, 0, -10, -5, 5,
+    5, 10, 10, -20, -20, 10, 10, 5,
+    0, 0, 0, 0, 0, 0, 0, 0,
+]
+PST_KNIGHT = [
+    -50, -40, -30, -30, -30, -30, -40, -50,
+    -40, -20, 0, 0, 0, 0, -20, -40,
+    -30, 0, 10, 15, 15, 10, 0, -30,
+    -30, 5, 15, 20, 20, 15, 5, -30,
+    -30, 0, 15, 20, 20, 15, 0, -30,
+    -30, 5, 10, 15, 15, 10, 5, -30,
+    -40, -20, 0, 5, 5, 0, -20, -40,
+    -50, -40, -30, -30, -30, -30, -40, -50,
+]
+PST_BISHOP = [
+    -20, -10, -10, -10, -10, -10, -10, -20,
+    -10, 0, 0, 0, 0, 0, 0, -10,
+    -10, 0, 5, 10, 10, 5, 0, -10,
+    -10, 5, 5, 10, 10, 5, 5, -10,
+    -10, 0, 10, 10, 10, 10, 0, -10,
+    -10, 10, 10, 10, 10, 10, 10, -10,
+    -10, 5, 0, 0, 0, 0, 5, -10,
+    -20, -10, -10, -10, -10, -10, -10, -20,
+]
+PST_ROOK = [
+    0, 0, 0, 5, 5, 0, 0, 0,
+    -5, 0, 0, 0, 0, 0, 0, -5,
+    -5, 0, 0, 0, 0, 0, 0, -5,
+    -5, 0, 0, 0, 0, 0, 0, -5,
+    -5, 0, 0, 0, 0, 0, 0, -5,
+    -5, 0, 0, 0, 0, 0, 0, -5,
+    5, 10, 10, 10, 10, 10, 10, 5,
+    0, 0, 0, 0, 0, 0, 0, 0,
+]
+PST_QUEEN = [
+    -20, -10, -10, -5, -5, -10, -10, -20,
+    -10, 0, 0, 0, 0, 0, 0, -10,
+    -10, 0, 5, 5, 5, 5, 0, -10,
+    -5, 0, 5, 5, 5, 5, 0, -5,
+    0, 0, 5, 5, 5, 5, 0, -5,
+    -10, 5, 5, 5, 5, 5, 0, -10,
+    -10, 0, 5, 0, 0, 0, 0, -10,
+    -20, -10, -10, -5, -5, -10, -10, -20,
+]
+PST_KING_MIDDLE = [
+    -30, -40, -40, -50, -50, -40, -40, -30,
+    -30, -40, -40, -50, -50, -40, -40, -30,
+    -30, -40, -40, -50, -50, -40, -40, -30,
+    -30, -40, -40, -50, -50, -40, -40, -30,
+    -20, -30, -30, -40, -40, -30, -30, -20,
+    -10, -20, -20, -20, -20, -20, -20, -10,
+    20, 20, 0, 0, 0, 0, 20, 20,
+    20, 30, 10, 0, 0, 10, 30, 20,
+]
+PST_MAP = {
+    chess.PAWN: PST_PAWN,
+    chess.KNIGHT: PST_KNIGHT,
+    chess.BISHOP: PST_BISHOP,
+    chess.ROOK: PST_ROOK,
+    chess.QUEEN: PST_QUEEN,
+    chess.KING: PST_KING_MIDDLE,
+}
 ELO_MODEL_FORBIDDEN_FEATURES = {
     "white_elo",
     "black_elo",
@@ -228,14 +298,24 @@ def stream_pgn_games(url: str) -> Iterable[chess.pgn.Game]:
             dctx = zstd.ZstdDecompressor(max_window_size=2**31)
             with dctx.stream_reader(response.raw) as reader:
                 text_stream = io.TextIOWrapper(reader, encoding="utf-8", errors="replace")
+                consecutive_parse_errors = 0
                 while True:
                     try:
                         game = chess.pgn.read_game(text_stream)
                     except Exception as exc:  # PGN corruption should not kill the run.
+                        exc_text = repr(exc)
+                        if any(marker in exc_text for marker in ("Connection broken", "IncompleteRead", "BrokenPipe")):
+                            raise RuntimeError(f"Stream interrupted while reading {url}: {exc}") from exc
+                        consecutive_parse_errors += 1
+                        if consecutive_parse_errors > 20:
+                            raise RuntimeError(
+                                f"Too many consecutive PGN parse failures while reading {url}: {exc}"
+                            ) from exc
                         print(f"Warning: failed to parse a PGN game: {exc}")
                         continue
                     if game is None:
                         break
+                    consecutive_parse_errors = 0
                     yield game
     except requests.RequestException as exc:
         raise RuntimeError(f"Failed to download or stream {url}: {exc}") from exc
@@ -558,6 +638,197 @@ def extract_board_features(board: chess.Board, prefix: str) -> dict[str, int]:
     return features
 
 
+def pst_score(board: chess.Board, color: chess.Color) -> int:
+    """Piece-square table score from one side's perspective at the current board."""
+    score = 0
+    for square in chess.SQUARES:
+        piece = board.piece_at(square)
+        if piece and piece.color == color:
+            index = square if color == chess.WHITE else chess.square_mirror(square)
+            score += PST_MAP[piece.piece_type][index]
+    return score
+
+
+def pawn_structure_features(board: chess.Board, color: chess.Color) -> dict[str, int]:
+    pawns = board.pieces(chess.PAWN, color)
+    pawn_files = [chess.square_file(square) for square in pawns]
+    pawn_file_counts = {file_index: pawn_files.count(file_index) for file_index in range(8)}
+    doubled = sum(count - 1 for count in pawn_file_counts.values() if count > 1)
+    isolated = 0
+    passed = 0
+    backward = 0
+
+    for square in pawns:
+        file_index = chess.square_file(square)
+        rank_index = chess.square_rank(square)
+        adjacent_files = [file_index - 1, file_index + 1]
+        has_adjacent_pawn = any(
+            pawn_file_counts.get(adjacent_file, 0) > 0
+            for adjacent_file in adjacent_files
+            if 0 <= adjacent_file < 8
+        )
+        isolated += int(not has_adjacent_pawn)
+
+        is_passed = True
+        for enemy_file in [file_index - 1, file_index, file_index + 1]:
+            if not 0 <= enemy_file < 8:
+                continue
+            for enemy_rank in range(8):
+                in_front = enemy_rank > rank_index if color == chess.WHITE else enemy_rank < rank_index
+                enemy_piece = board.piece_at(chess.square(enemy_file, enemy_rank))
+                if in_front and enemy_piece == chess.Piece(chess.PAWN, not color):
+                    is_passed = False
+                    break
+            if not is_passed:
+                break
+        passed += int(is_passed)
+
+        is_backward = bool(has_adjacent_pawn)
+        for adjacent_file in adjacent_files:
+            if not 0 <= adjacent_file < 8:
+                continue
+            for adjacent_rank in range(8):
+                adjacent_piece = board.piece_at(chess.square(adjacent_file, adjacent_rank))
+                if adjacent_piece == chess.Piece(chess.PAWN, color):
+                    behind_or_beside = adjacent_rank <= rank_index if color == chess.WHITE else adjacent_rank >= rank_index
+                    if behind_or_beside:
+                        is_backward = False
+                        break
+            if not is_backward:
+                break
+        backward += int(is_backward)
+
+    pawn_islands = 0
+    in_island = False
+    for file_index in range(8):
+        if pawn_file_counts[file_index] > 0:
+            if not in_island:
+                pawn_islands += 1
+                in_island = True
+        else:
+            in_island = False
+
+    return {
+        "pawns_doubled": doubled,
+        "pawns_isolated": isolated,
+        "pawns_passed": passed,
+        "pawns_backward": backward,
+        "pawns_islands": pawn_islands,
+    }
+
+
+def king_safety_features(board: chess.Board, color: chess.Color) -> dict[str, int]:
+    king_square = board.king(color)
+    if king_square is None:
+        return {"king_pawn_shield": 0, "king_attackers_near": 0, "king_open_files_near": 0}
+    king_file = chess.square_file(king_square)
+    king_rank = chess.square_rank(king_square)
+
+    pawn_shield = 0
+    shield_rank = king_rank + 1 if color == chess.WHITE else king_rank - 1
+    if 0 <= shield_rank < 8:
+        for file_index in [king_file - 1, king_file, king_file + 1]:
+            if 0 <= file_index < 8:
+                piece = board.piece_at(chess.square(file_index, shield_rank))
+                pawn_shield += int(piece == chess.Piece(chess.PAWN, color))
+
+    adjacent_squares = []
+    for file_delta in [-1, 0, 1]:
+        for rank_delta in [-1, 0, 1]:
+            if file_delta == 0 and rank_delta == 0:
+                continue
+            target_file = king_file + file_delta
+            target_rank = king_rank + rank_delta
+            if 0 <= target_file < 8 and 0 <= target_rank < 8:
+                adjacent_squares.append(chess.square(target_file, target_rank))
+    enemy_attackers = set()
+    for square in adjacent_squares:
+        enemy_attackers.update(board.attackers(not color, square))
+
+    open_files_near = 0
+    for file_index in [king_file - 1, king_file, king_file + 1]:
+        if not 0 <= file_index < 8:
+            continue
+        has_friendly_pawn = any(
+            board.piece_at(chess.square(file_index, rank_index)) == chess.Piece(chess.PAWN, color)
+            for rank_index in range(8)
+        )
+        open_files_near += int(not has_friendly_pawn)
+
+    return {
+        "king_pawn_shield": pawn_shield,
+        "king_attackers_near": len(enemy_attackers),
+        "king_open_files_near": open_files_near,
+    }
+
+
+def mobility_features(board: chess.Board, color: chess.Color) -> dict[str, int]:
+    attacks_by_piece = {
+        chess.KNIGHT: set(),
+        chess.BISHOP: set(),
+        chess.ROOK: set(),
+        chess.QUEEN: set(),
+    }
+    for square in chess.SQUARES:
+        piece = board.piece_at(square)
+        if piece and piece.color == color and piece.piece_type in attacks_by_piece:
+            attacks_by_piece[piece.piece_type].update(board.attacks(square))
+    total_attacks = set().union(*attacks_by_piece.values())
+    return {
+        "knight_mobility": len(attacks_by_piece[chess.KNIGHT]),
+        "bishop_mobility": len(attacks_by_piece[chess.BISHOP]),
+        "rook_mobility": len(attacks_by_piece[chess.ROOK]),
+        "queen_mobility": len(attacks_by_piece[chess.QUEEN]),
+        "total_attack_coverage": len(total_attacks),
+    }
+
+
+def development_features(board: chess.Board, color: chess.Color) -> dict[str, int]:
+    starting_squares = (
+        (chess.B1, chess.C1, chess.F1, chess.G1)
+        if color == chess.WHITE
+        else (chess.B8, chess.C8, chess.F8, chess.G8)
+    )
+    minor_developed = 0
+    for square in starting_squares:
+        piece = board.piece_at(square)
+        if piece is None or piece.color != color or piece.piece_type not in {chess.KNIGHT, chess.BISHOP}:
+            minor_developed += 1
+
+    back_rank = 0 if color == chess.WHITE else 7
+    back_rank_count = sum(
+        1
+        for file_index in range(8)
+        if (piece := board.piece_at(chess.square(file_index, back_rank))) is not None and piece.color == color
+    )
+    return {"dev_minor_developed": minor_developed, "dev_back_rank_count": back_rank_count}
+
+
+def color_enhanced_features(board: chess.Board, color: chess.Color, prefix: str) -> dict[str, int]:
+    features = {f"{prefix}pst_score": pst_score(board, color)}
+    for source in (
+        pawn_structure_features(board, color),
+        king_safety_features(board, color),
+        mobility_features(board, color),
+        development_features(board, color),
+    ):
+        for key, value in source.items():
+            features[f"{prefix}{key}"] = value
+    return features
+
+
+def extract_enhanced_board_features(board: chess.Board, prefix: str) -> dict[str, int]:
+    """Extract lightweight positional features from the current board only."""
+    white = color_enhanced_features(board, chess.WHITE, f"{prefix}white_")
+    black = color_enhanced_features(board, chess.BLACK, f"{prefix}black_")
+    features = {**white, **black}
+    features[f"{prefix}pst_diff"] = white[f"{prefix}white_pst_score"] - black[f"{prefix}black_pst_score"]
+    features[f"{prefix}mobility_diff"] = (
+        white[f"{prefix}white_total_attack_coverage"] - black[f"{prefix}black_total_attack_coverage"]
+    )
+    return features
+
+
 def extract_game_record(game: chess.pgn.Game, game_index: int) -> dict[str, Any] | None:
     """Convert one eligible PGN game into a model-ready row."""
     headers = game.headers
@@ -594,9 +865,11 @@ def extract_game_record(game: chess.pgn.Game, game_index: int) -> dict[str, Any]
         "white_win": int(result == "1-0"),
     }
     record.update(extract_board_features(board_after_3, "m3_"))
+    record.update(extract_enhanced_board_features(board_after_3, "m3_enh_"))
     record.update(m3_behavior)
     record.update(clk3_features)
     record.update(extract_board_features(board_after_10, "m10_"))
+    record.update(extract_enhanced_board_features(board_after_10, "m10_enh_"))
     record.update(m10_behavior)
     record.update(clk10_features)
     return record
@@ -867,7 +1140,12 @@ def require_two_classes(y_train: pd.Series, model_name: str) -> None:
         raise ValueError(f"{model_name} needs both target classes in training; increase TARGET_GAMES.")
 
 
-def model_feature_columns(df: pd.DataFrame, use_history: bool = True, use_clock: bool = False) -> dict[str, list[str]]:
+def model_feature_columns(
+    df: pd.DataFrame,
+    use_history: bool = True,
+    use_clock: bool = False,
+    use_enhanced_board: bool = False,
+) -> dict[str, list[str]]:
     history_numeric = [col for col in HISTORY_FEATURE_COLUMNS if use_history and col in df.columns]
     before_numeric = [
         "white_elo",
@@ -878,8 +1156,12 @@ def model_feature_columns(df: pd.DataFrame, use_history: bool = True, use_clock:
         "increment_seconds",
         "log_initial_time_seconds",
     ] + history_numeric
-    m3_board = sorted(col for col in df.columns if col.startswith("m3_"))
-    m10_board = sorted(col for col in df.columns if col.startswith("m10_"))
+    m3_board = sorted(
+        col for col in df.columns if col.startswith("m3_") and (use_enhanced_board or not col.startswith("m3_enh_"))
+    )
+    m10_board = sorted(
+        col for col in df.columns if col.startswith("m10_") and (use_enhanced_board or not col.startswith("m10_enh_"))
+    )
     clk3 = sorted(col for col in df.columns if use_clock and col.startswith("clk3_"))
     clk10 = sorted(col for col in df.columns if use_clock and col.startswith("clk10_"))
     after3_numeric = before_numeric + m3_board + clk3
@@ -1075,6 +1357,296 @@ def clock_availability_summary(df: pd.DataFrame) -> dict[str, float]:
         "first_3_moves_any_clock_rate": float(df["clk3_any_clock_available"].mean()),
         "first_10_moves_any_clock_rate": float(df["clk10_any_clock_available"].mean()),
     }
+
+
+def replay_uci_text_to_board(moves_text: str, ply_limit: int) -> chess.Board:
+    """Replay UCI tokens from the SAN+UCI move text up to a ply limit."""
+    board = chess.Board()
+    tokens = str(moves_text).split()
+    uci_tokens = tokens[1::2]
+    for uci in uci_tokens[:ply_limit]:
+        try:
+            move = chess.Move.from_uci(uci)
+        except ValueError:
+            break
+        if move not in board.legal_moves:
+            break
+        board.push(move)
+    return board
+
+
+class StockfishEvaluator:
+    """Small Stockfish wrapper with JSON FEN cache for optional heavy experiments."""
+
+    def __init__(self, cache_path: Path, depth: int) -> None:
+        self.cache_path = cache_path
+        self.depth = depth
+        self.cache: dict[str, dict[str, float]] = {}
+        self.engine: chess.engine.SimpleEngine | None = None
+        if cache_path.exists():
+            try:
+                self.cache = json.loads(cache_path.read_text(encoding="utf-8"))
+            except Exception as exc:
+                print(f"Warning: could not read Stockfish cache {cache_path}: {exc}")
+                self.cache = {}
+        for path in ("/opt/homebrew/bin/stockfish", "/usr/local/bin/stockfish", "stockfish"):
+            try:
+                self.engine = chess.engine.SimpleEngine.popen_uci(path)
+                print(f"Using Stockfish at {path}")
+                break
+            except Exception:
+                continue
+        if self.engine is None:
+            print("Warning: Stockfish unavailable; SF features will use neutral zeros.")
+
+    def evaluate(self, board: chess.Board) -> tuple[float, float]:
+        fen = board.fen()
+        if fen in self.cache:
+            cached = self.cache[fen]
+            return float(cached.get("cp", 0.0)), float(cached.get("mate", 0.0))
+        if self.engine is None:
+            return 0.0, 0.0
+        try:
+            info = self.engine.analyse(board, chess.engine.Limit(depth=self.depth))
+            score = info["score"].pov(chess.WHITE)
+            if score.is_mate():
+                mate = float(score.mate() or 0)
+                cp = 10000.0 if mate > 0 else -10000.0
+            else:
+                cp = float(score.score() or 0)
+                mate = 0.0
+        except Exception:
+            cp, mate = 0.0, 0.0
+        self.cache[fen] = {"cp": cp, "mate": mate}
+        return cp, mate
+
+    def save(self) -> None:
+        self.cache_path.parent.mkdir(parents=True, exist_ok=True)
+        self.cache_path.write_text(json.dumps(self.cache), encoding="utf-8")
+
+    def close(self) -> None:
+        self.save()
+        if self.engine is not None:
+            try:
+                self.engine.quit()
+            except Exception:
+                pass
+
+
+def add_stockfish_features(df: pd.DataFrame, cache_path: Path, depth: int) -> pd.DataFrame:
+    """Add Stockfish features for boards after 3 and 10 moves."""
+    evaluator = StockfishEvaluator(cache_path=cache_path, depth=depth)
+    rows: list[dict[str, float]] = []
+    try:
+        for idx, row in df.iterrows():
+            board3 = replay_uci_text_to_board(str(row["first_3_moves_text"]), 6)
+            board10 = replay_uci_text_to_board(str(row["first_10_moves_text"]), 20)
+            sf3_cp, sf3_mate = evaluator.evaluate(board3)
+            sf10_cp, sf10_mate = evaluator.evaluate(board10)
+            rows.append(
+                {
+                    "sf3_cp": sf3_cp,
+                    "sf3_mate": sf3_mate,
+                    "sf10_cp": sf10_cp,
+                    "sf10_mate": sf10_mate,
+                    "sf10_cp_diff": sf10_cp - sf3_cp,
+                }
+            )
+            if (len(rows) % 1000) == 0:
+                print(f"Stockfish evaluated/cached {len(rows):,}/{len(df):,} games")
+                evaluator.save()
+    finally:
+        evaluator.close()
+    sf_df = pd.DataFrame(rows, index=df.index)
+    return pd.concat([df, sf_df], axis=1)
+
+
+def ensure_enhanced_board_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Compute enhanced board features from stored move text when not already present."""
+    if "m3_enh_pst_diff" in df.columns and "m10_enh_pst_diff" in df.columns:
+        return df
+    print("Computing lightweight enhanced board features from cached move text")
+    rows: list[dict[str, int]] = []
+    for idx, row in df.iterrows():
+        board3 = replay_uci_text_to_board(str(row["first_3_moves_text"]), 6)
+        board10 = replay_uci_text_to_board(str(row["first_10_moves_text"]), 20)
+        features = {}
+        features.update(extract_enhanced_board_features(board3, "m3_enh_"))
+        features.update(extract_enhanced_board_features(board10, "m10_enh_"))
+        rows.append(features)
+        if (len(rows) % 5000) == 0:
+            print(f"Enhanced features computed for {len(rows):,}/{len(df):,} games")
+    return pd.concat([df, pd.DataFrame(rows, index=df.index)], axis=1)
+
+
+def numeric_model_pipeline(numeric_cols: list[str], model: Any) -> Pipeline:
+    return Pipeline(steps=[("features", numeric_preprocessor(numeric_cols)), ("model", model)])
+
+
+def run_report_best_models(
+    config: Config,
+    selected_month: str,
+    output_dir: Path,
+    run_started_at: float,
+    stockfish_depth: int,
+    input_cache_csv: str | None,
+    stockfish_cache_path: str | None,
+) -> None:
+    """Run the heavier report-selected models as an explicit optional experiment."""
+    loaded_from_cache = bool(input_cache_csv)
+    if input_cache_csv:
+        print(f"Loading cached dataset from {input_cache_csv}")
+        df = pd.read_csv(input_cache_csv).head(config.target_games).copy()
+        dataset_build_stats = DatasetBuildStats(
+            parsed_games=int(df["game_index"].max()) if "game_index" in df.columns else len(df),
+            header_eligible_games=len(df),
+            eligible_games=len(df),
+        )
+    else:
+        df, dataset_build_stats = build_dataset(config, selected_month)
+    df = ensure_enhanced_board_features(df)
+    stockfish_cache = Path(stockfish_cache_path) if stockfish_cache_path else output_dir / "stockfish_cache.json"
+    df = add_stockfish_features(df, cache_path=stockfish_cache, depth=stockfish_depth)
+    train_df, val_df = split_train_validation(df, config.train_ratio)
+    print_dataset_summary(df, train_df, val_df, config, selected_month)
+    y_train = train_df["white_win"]
+    y_val = val_df["white_win"]
+    require_two_classes(y_train, "Report-selected classifiers")
+
+    feature_cols = model_feature_columns(df, use_history=True, use_clock=True, use_enhanced_board=True)
+    before_hist_cols = feature_cols["before_numeric"]
+    after3_sf_cols = feature_cols["after3_numeric"] + ["sf3_cp", "sf3_mate"]
+    after10_sf_cols = feature_cols["after10_numeric"] + ["sf3_cp", "sf3_mate", "sf10_cp", "sf10_mate", "sf10_cp_diff"]
+    elo_sf_cols = feature_cols["elo_after10_numeric"] + ["sf3_cp", "sf3_mate", "sf10_cp", "sf10_mate", "sf10_cp_diff"]
+
+    t1_model = build_classifier_pipeline(
+        numeric_cols=before_hist_cols,
+        text_cols=[],
+        hashing_features=config.hashing_features,
+        random_seed=config.random_seed,
+        c_value=1.0,
+    )
+    t2_model = numeric_model_pipeline(
+        after3_sf_cols,
+        GradientBoostingClassifier(random_state=config.random_seed),
+    )
+    t3_model = numeric_model_pipeline(
+        after10_sf_cols,
+        HistGradientBoostingClassifier(random_state=config.random_seed),
+    )
+    t4_rf_sf_model = numeric_model_pipeline(
+        elo_sf_cols,
+        RandomForestRegressor(n_estimators=100, random_state=config.random_seed, n_jobs=-1),
+    )
+    t4_rf_no_sf_model = numeric_model_pipeline(
+        feature_cols["elo_after10_numeric"],
+        RandomForestRegressor(n_estimators=100, random_state=config.random_seed, n_jobs=-1),
+    )
+
+    t1_model.fit(train_df[before_hist_cols], y_train)
+    t2_model.fit(train_df[after3_sf_cols], y_train)
+    t3_model.fit(train_df[after10_sf_cols], y_train)
+    t4_rf_sf_model.fit(train_df[elo_sf_cols], train_df[["white_elo", "black_elo"]])
+    t4_rf_no_sf_model.fit(train_df[feature_cols["elo_after10_numeric"]], train_df[["white_elo", "black_elo"]])
+
+    t4_sf_metrics = evaluate_regressor("t4_random_forest_stockfish", t4_rf_sf_model, val_df[elo_sf_cols], val_df[["white_elo", "black_elo"]])
+    t4_no_sf_metrics = evaluate_regressor(
+        "t4_random_forest_no_stockfish",
+        t4_rf_no_sf_model,
+        val_df[feature_cols["elo_after10_numeric"]],
+        val_df[["white_elo", "black_elo"]],
+    )
+    metrics = {
+        "run_config": {
+            **asdict(config),
+            "selected_month": selected_month,
+            "stockfish_depth": stockfish_depth,
+            "loaded_from_cache_csv": input_cache_csv,
+            "stockfish_cache_path": str(stockfish_cache),
+            "output_dir": str(output_dir),
+        },
+        "feature_notes": {
+            "report_selected_heavy_models": True,
+            "uses_stockfish": True,
+            "uses_sklearn_tree_models": True,
+            "not_default_production_path": True,
+            "current_elo_excluded_from_elo_features": True,
+            "dataset_loaded_from_cache": loaded_from_cache,
+        },
+        "dataset_summary": {
+            "parsed_games": int(dataset_build_stats.parsed_games),
+            "header_eligible_games": int(dataset_build_stats.header_eligible_games),
+            "eligible_games": int(len(df)),
+            "train_games": int(len(train_df)),
+            "validation_games": int(len(val_df)),
+            "train_positive_rate": float(train_df["white_win"].mean()),
+            "validation_positive_rate": float(val_df["white_win"].mean()),
+            "stockfish_cache_entries": len(json.loads(stockfish_cache.read_text(encoding="utf-8"))) if stockfish_cache.exists() else 0,
+        },
+        "models": {
+            "t1_before_logreg_history": evaluate_classifier("t1_before_logreg_history", t1_model, val_df[before_hist_cols], y_val),
+            "t2_after3_gradient_boosting_stockfish": evaluate_classifier(
+                "t2_after3_gradient_boosting_stockfish",
+                t2_model,
+                val_df[after3_sf_cols],
+                y_val,
+            ),
+            "t3_after10_hist_gradient_boosting_stockfish": evaluate_classifier(
+                "t3_after10_hist_gradient_boosting_stockfish",
+                t3_model,
+                val_df[after10_sf_cols],
+                y_val,
+            ),
+            "t4_elo_random_forest_stockfish": t4_sf_metrics,
+            "t4_elo_random_forest_no_stockfish": t4_no_sf_metrics,
+        },
+    }
+    metrics["run_config"]["runtime_seconds"] = float(time.perf_counter() - run_started_at)
+    rows = []
+    for name, values in metrics["models"].items():
+        row = {"model_name": name}
+        row.update(values)
+        if "white_elo_mae" in values:
+            row["avg_mae"] = (values["white_elo_mae"] + values["black_elo_mae"]) / 2.0
+        rows.append(row)
+    write_json(output_dir / "metrics.json", metrics)
+    pd.DataFrame(rows).to_csv(output_dir / "experiment_results.csv", index=False)
+    print_metrics_report(
+        {
+            "models": {
+                "white_win_before_game": metrics["models"]["t1_before_logreg_history"],
+                "white_win_after_3_moves": metrics["models"]["t2_after3_gradient_boosting_stockfish"],
+                "white_win_after_10_moves": metrics["models"]["t3_after10_hist_gradient_boosting_stockfish"],
+                "elo_after_10_moves": metrics["models"]["t4_elo_random_forest_stockfish"],
+            },
+            "baselines": {
+                "elo_expected_score_baseline": evaluate_probability_predictions(
+                    "elo_expected_score_baseline",
+                    y_val,
+                    elo_expected_score_probability(val_df),
+                    include_accuracy=False,
+                ),
+                "majority_class_baseline": {
+                    "train_positive_rate": float(train_df["white_win"].mean()),
+                    "validation_positive_rate": float(val_df["white_win"].mean()),
+                    "train_majority_class": int(float(train_df["white_win"].mean()) >= 0.5),
+                    "validation_accuracy": float(
+                        accuracy_score(
+                            y_val,
+                            np.full(len(y_val), int(float(train_df["white_win"].mean()) >= 0.5), dtype=int),
+                        )
+                    ),
+                },
+                "elo_mean_baseline": evaluate_regression_predictions(
+                    "elo_mean_baseline",
+                    val_df[["white_elo", "black_elo"]],
+                    elo_mean_baseline_predictions(train_df, val_df),
+                ),
+            },
+        }
+    )
+    print(f"\nWrote report-selected model metrics to {output_dir / 'metrics.json'}")
+    print(f"Wrote report-selected model results to {output_dir / 'experiment_results.csv'}")
 
 
 def run_experiments(config: Config, selected_month: str, output_dir: Path, run_started_at: float) -> None:
@@ -1307,6 +1879,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--hashing-features", type=int, default=DEFAULT_HASHING_FEATURES)
     parser.add_argument("--run-experiments", action="store_true", help="Run compact 10k config experiments.")
     parser.add_argument("--run-clock-experiments", action="store_true", help="Run compact 10k clock feature experiments.")
+    parser.add_argument("--run-report-best-models", action="store_true", help="Run report-selected Stockfish/tree model experiment.")
+    parser.add_argument("--stockfish-depth", type=int, default=10, help="Stockfish search depth for --run-report-best-models.")
+    parser.add_argument("--input-cache-csv", default=None, help="Optional cached dataset CSV/CSV.GZ for --run-report-best-models.")
+    parser.add_argument("--stockfish-cache-path", default=None, help="Optional Stockfish JSON cache path for --run-report-best-models.")
     return parser.parse_args()
 
 
@@ -1338,6 +1914,17 @@ def main() -> None:
         return
     if args.run_clock_experiments:
         run_clock_experiments(config, selected_month, output_dir, run_started_at)
+        return
+    if args.run_report_best_models:
+        run_report_best_models(
+            config,
+            selected_month,
+            output_dir,
+            run_started_at,
+            args.stockfish_depth,
+            args.input_cache_csv,
+            args.stockfish_cache_path,
+        )
         return
 
     df, dataset_build_stats = build_dataset(config, selected_month)
@@ -1415,6 +2002,9 @@ def main() -> None:
         "run_config": {**asdict(config), "selected_month": selected_month},
         "feature_notes": {
             "selected_configs_from_10k_experiments": True,
+            "lightweight_enhanced_board_features_available": True,
+            "lightweight_enhanced_board_features_selected": False,
+            "enhanced_board_10k_verification": "not_selected_metric_regression",
             "white_win_before": "baseline_no_history_no_identity_no_clock_C1.0",
             "white_win_after_3": "player_identity_no_history_no_clock_C0.25",
             "white_win_after_10": "player_identity_no_history_clock_C0.25",
@@ -1426,6 +2016,8 @@ def main() -> None:
             "history_features_computed_before_current_game_update": True,
             "clock_features_limited_to_allowed_plies": True,
             "player_identity_hashed_features": True,
+            "stockfish_or_deep_learning_used": False,
+            "heavy_dependencies_added": False,
         },
         "dataset_summary": {
             "parsed_games": int(dataset_build_stats.parsed_games),

@@ -1,0 +1,83 @@
+{
+  "dataset_summary": {
+    "eligible_games": 10000,
+    "header_eligible_games": 10000,
+    "parsed_games": 21330,
+    "stockfish_cache_entries": 119352,
+    "train_games": 8000,
+    "train_positive_rate": 0.492375,
+    "validation_games": 2000,
+    "validation_positive_rate": 0.499
+  },
+  "feature_notes": {
+    "current_elo_excluded_from_elo_features": true,
+    "dataset_loaded_from_cache": true,
+    "not_default_production_path": true,
+    "report_selected_heavy_models": true,
+    "uses_sklearn_tree_models": true,
+    "uses_stockfish": true
+  },
+  "models": {
+    "t1_before_logreg_history": {
+      "accuracy": 0.5345,
+      "brier_score": 0.24415668809559027,
+      "log_loss": 0.6807361500372315,
+      "roc_auc": 0.5655432621730487
+    },
+    "t2_after3_gradient_boosting_stockfish": {
+      "accuracy": 0.543,
+      "brier_score": 0.24493735620090723,
+      "log_loss": 0.6827871941065655,
+      "roc_auc": 0.5739182956731828
+    },
+    "t3_after10_hist_gradient_boosting_stockfish": {
+      "accuracy": 0.5745,
+      "brier_score": 0.23878669889854554,
+      "log_loss": 0.6694472501857897,
+      "roc_auc": 0.6248424993699975
+    },
+    "t4_elo_random_forest_no_stockfish": {
+      "black_elo_mae": 74.10274000000001,
+      "black_elo_r2": 0.8456398278924856,
+      "black_elo_rmse": 145.64765495091225,
+      "white_elo_mae": 82.96919,
+      "white_elo_r2": 0.8353462639465922,
+      "white_elo_rmse": 150.64820667137064
+    },
+    "t4_elo_random_forest_stockfish": {
+      "black_elo_mae": 74.37303,
+      "black_elo_r2": 0.8473884775641074,
+      "black_elo_rmse": 144.82032970304962,
+      "white_elo_mae": 83.49313000000001,
+      "white_elo_r2": 0.8363102609013578,
+      "white_elo_rmse": 150.2065598507602
+    }
+  },
+  "run_config": {
+    "candidate_months": [
+      "2023-01",
+      "2023-02",
+      "2023-03",
+      "2023-04",
+      "2023-05",
+      "2023-06",
+      "2023-07",
+      "2023-08",
+      "2023-09",
+      "2023-10",
+      "2023-11",
+      "2023-12"
+    ],
+    "hashing_features": 32768,
+    "loaded_from_cache_csv": "experiment/outputs/cache/games_2023-11_100000.csv.gz",
+    "output_dir": "outputs_report_best_models_10k",
+    "random_seed": 42,
+    "runtime_seconds": 41.293677207955625,
+    "selected_month": "2023-11",
+    "stockfish_cache_path": "experiment/stockfish_cache.json",
+    "stockfish_depth": 10,
+    "target_games": 10000,
+    "time_control": "Blitz",
+    "train_ratio": 0.8
+  }
+}
