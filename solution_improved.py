@@ -28,6 +28,7 @@ import numpy as np
 import pandas as pd
 import requests
 import zstandard as zstd
+from sklearn.calibration import CalibratedClassifierCV
 from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import GradientBoostingClassifier, HistGradientBoostingClassifier, RandomForestRegressor
 from sklearn.feature_extraction.text import HashingVectorizer
@@ -59,13 +60,6 @@ DEFAULT_LOGISTIC_SOLVER = "liblinear"
 PROBABILITY_EPS = 1e-6
 NEUTRAL_SCORE_RATE = 0.5
 NEUTRAL_ELO = 1500.0
-HISTORY_BAYESIAN_VIRTUAL_GAMES = 10.0
-HISTORY_BAYESIAN_PRIOR_RATE = 0.5
-HISTORY_ELO_VIRTUAL_GAMES = 5.0
-HISTORY_ELO_PRIOR = 1930.0
-USE_HISTORY_BAYESIAN_SMOOTHING = False
-MAX_STREAM_RETRIES = 5
-STREAM_RETRY_BASE_DELAY_SECONDS = 10.0
 HTTP_TIMEOUT_SECONDS = (10, 60)
 RESULTS = {"1-0", "0-1", "1/2-1/2"}
 PIECE_VALUES = {
@@ -304,15 +298,22 @@ def parse_clk_comment(comment: str) -> float | None:
     return None
 
 
+# Sentinel exception for resumable stream interruptions.
 class _StreamInterrupted(Exception):
-    """Raised when a Lichess stream interruption can be retried."""
+    """Raised when a network interruption occurs mid-stream (resumable)."""
 
 
 def stream_pgn_games(url: str, skip_games: int = 0) -> Iterable[chess.pgn.Game]:
-    """Stream and decompress PGN games without writing the decompressed file.
+    """Stream and decompress PGN games, skipping the first *skip_games* parsed games.
 
-    `skip_games` supports coarse resume after reconnect: the caller restarts
-    the compressed stream and fast-forwards past games already parsed.
+    Args:
+        url: URL to the Lichess .pgn.zst file.
+        skip_games: Number of already-parsed games to skip before yielding.
+                    Used by build_dataset to resume after a connection reset.
+
+    Raises:
+        _StreamInterrupted: On recoverable network errors so the caller can retry.
+        RuntimeError: On unrecoverable errors (HTTP error, too many parse failures).
     """
     try:
         with requests.get(url, stream=True, timeout=HTTP_TIMEOUT_SECONDS) as response:
@@ -333,7 +334,7 @@ def stream_pgn_games(url: str, skip_games: int = 0) -> Iterable[chess.pgn.Game]:
                             for marker in ("Connection broken", "IncompleteRead", "BrokenPipe", "ConnectionReset")
                         ):
                             raise _StreamInterrupted(
-                                f"Stream interrupted at game {games_seen:,} while reading {url}: {exc}"
+                                f"Stream interrupted at game {games_seen} while reading {url}: {exc}"
                             ) from exc
                         consecutive_parse_errors += 1
                         if consecutive_parse_errors > 20:
@@ -347,10 +348,10 @@ def stream_pgn_games(url: str, skip_games: int = 0) -> Iterable[chess.pgn.Game]:
                     consecutive_parse_errors = 0
                     games_seen += 1
                     if games_seen <= skip_games:
-                        continue
+                        continue  # Fast-forward past already-processed games.
                     yield game
     except _StreamInterrupted:
-        raise
+        raise  # Propagate to build_dataset for retry.
     except requests.RequestException as exc:
         raise RuntimeError(f"Failed to download or stream {url}: {exc}") from exc
 
@@ -379,48 +380,29 @@ def recent_score_rate(scores: deque[float]) -> float:
 
 
 def player_snapshot_features(history: PlayerHistory, prefix: str, side: str) -> dict[str, float | int]:
-    """Return causal features based only on games already processed.
-
-    Rates use a neutral Bayesian prior to avoid brittle 0%/100% values for
-    players with very little same-month history.
-    """
+    """Return causal features based only on games already processed with Bayesian Smoothing."""
     if side == "white":
-        side_count = history.prior_games_as_white
-        side_wins = history.prior_wins_as_white
+        # Bayesian smoothed win rate: prior Elo win rate with 10 virtual games (50% prior)
+        side_win_rate = float(history.prior_wins_as_white + 5.0) / (history.prior_games_as_white + 10.0)
         side_key = "prior_win_rate_as_white"
     elif side == "black":
-        side_count = history.prior_games_as_black
-        side_wins = history.prior_wins_as_black
+        side_win_rate = float(history.prior_wins_as_black + 5.0) / (history.prior_games_as_black + 10.0)
         side_key = "prior_win_rate_as_black"
     else:
         raise ValueError(f"Unexpected side: {side}")
 
-    if USE_HISTORY_BAYESIAN_SMOOTHING:
-        side_win_rate = (
-            side_wins + HISTORY_BAYESIAN_PRIOR_RATE * HISTORY_BAYESIAN_VIRTUAL_GAMES
-        ) / (side_count + HISTORY_BAYESIAN_VIRTUAL_GAMES)
-        score_rate = (
-            history.prior_score_sum_all + HISTORY_BAYESIAN_PRIOR_RATE * HISTORY_BAYESIAN_VIRTUAL_GAMES
-        ) / (history.prior_games + HISTORY_BAYESIAN_VIRTUAL_GAMES)
-        recent_rate_10 = (
-            sum(history.recent_scores_10) + HISTORY_BAYESIAN_PRIOR_RATE * HISTORY_BAYESIAN_VIRTUAL_GAMES
-        ) / (len(history.recent_scores_10) + HISTORY_BAYESIAN_VIRTUAL_GAMES)
-        recent_rate_30 = (
-            sum(history.recent_scores_30) + HISTORY_BAYESIAN_PRIOR_RATE * 30.0
-        ) / (len(history.recent_scores_30) + 30.0)
-        avg_opponent_elo = (
-            history.prior_opponent_elo_sum + HISTORY_ELO_VIRTUAL_GAMES * HISTORY_ELO_PRIOR
-        ) / (history.prior_games + HISTORY_ELO_VIRTUAL_GAMES)
-        avg_elo_seen = (
-            history.prior_elo_seen_sum + HISTORY_ELO_VIRTUAL_GAMES * HISTORY_ELO_PRIOR
-        ) / (history.prior_games + HISTORY_ELO_VIRTUAL_GAMES)
-    else:
-        side_win_rate = safe_rate(side_wins, side_count)
-        score_rate = safe_rate(history.prior_score_sum_all, history.prior_games)
-        recent_rate_10 = recent_score_rate(history.recent_scores_10)
-        recent_rate_30 = recent_score_rate(history.recent_scores_30)
-        avg_opponent_elo = safe_rate(history.prior_opponent_elo_sum, history.prior_games, default=NEUTRAL_ELO)
-        avg_elo_seen = safe_rate(history.prior_elo_seen_sum, history.prior_games, default=NEUTRAL_ELO)
+    # Smoothed overall score rate with 10 virtual games (50% score prior)
+    score_rate = float(history.prior_score_sum_all + 5.0) / (history.prior_games + 10.0)
+    
+    # Smoothed opponent Elo seen & Elo seen using average Lichess Blitz rating (~1930 Elo) with 5 virtual games
+    avg_opponent_elo = float(history.prior_opponent_elo_sum + 5.0 * 1930.0) / (history.prior_games + 5.0)
+    avg_elo_seen = float(history.prior_elo_seen_sum + 5.0 * 1930.0) / (history.prior_games + 5.0)
+
+    # Smoothed recent score rates
+    recent_len_10 = len(history.recent_scores_10)
+    recent_rate_10 = float(sum(history.recent_scores_10) + 5.0) / (recent_len_10 + 10.0)
+    recent_len_30 = len(history.recent_scores_30)
+    recent_rate_30 = float(sum(history.recent_scores_30) + 15.0) / (recent_len_30 + 30.0)
 
     return {
         f"{prefix}_prior_games": history.prior_games,
@@ -558,7 +540,7 @@ def extract_clock_features(
     initial_time_seconds: int,
     increment_seconds: int,
 ) -> dict[str, float | int]:
-    """Extract clock features using only clock comments through the given ply."""
+    """Extract clock features using only clock comments through the given ply with Time Pressure metrics."""
     neutral_clock = float(initial_time_seconds)
     side_values = {"white": [], "black": []}
     missing = {"white": 0, "black": 0}
@@ -585,9 +567,13 @@ def extract_clock_features(
     white_avg = safe_rate(used_total["white"], observed_moves["white"], default=0.0)
     black_avg = safe_rate(used_total["black"], observed_moves["black"], default=0.0)
     any_clock_available = int(bool(side_values["white"] or side_values["black"]))
-    denom = float(initial_time_seconds) + 1.0
-    white_time_used_ratio = used_total["white"] / denom
-    black_time_used_ratio = used_total["black"] / denom
+
+    # Advanced Time Pressure features
+    white_time_panic = int(white_last < 15.0)
+    black_time_panic = int(black_last < 15.0)
+    white_time_used_ratio = used_total["white"] / (initial_time_seconds + 1.0)
+    black_time_used_ratio = used_total["black"] / (initial_time_seconds + 1.0)
+    time_ratio_diff = white_time_used_ratio - black_time_used_ratio
 
     return {
         f"{prefix}white_clock_last": white_last,
@@ -604,11 +590,11 @@ def extract_clock_features(
         f"{prefix}white_clock_missing_count": missing["white"],
         f"{prefix}black_clock_missing_count": missing["black"],
         f"{prefix}any_clock_available": any_clock_available,
-        f"{prefix}white_time_panic": int(white_last < 15.0),
-        f"{prefix}black_time_panic": int(black_last < 15.0),
+        f"{prefix}white_time_panic": white_time_panic,
+        f"{prefix}black_time_panic": black_time_panic,
         f"{prefix}white_time_used_ratio": white_time_used_ratio,
         f"{prefix}black_time_used_ratio": black_time_used_ratio,
-        f"{prefix}time_ratio_diff": white_time_used_ratio - black_time_used_ratio,
+        f"{prefix}time_ratio_diff": time_ratio_diff,
     }
 
 
@@ -942,8 +928,17 @@ def extract_game_record(game: chess.pgn.Game, game_index: int) -> dict[str, Any]
     return record
 
 
+_MAX_STREAM_RETRIES = 5
+_STREAM_RETRY_BASE_DELAY = 10.0  # seconds
+
+
 def build_dataset(config: Config, selected_month: str) -> tuple[pd.DataFrame, DatasetBuildStats]:
-    """Stream games and return the first configured number of eligible rows."""
+    """Stream games and return the first configured number of eligible rows.
+
+    Automatically retries with exponential backoff when the Lichess stream is
+    dropped mid-transfer (ConnectionResetError / ProtocolError). Each retry
+    reconnects and fast-forwards past already-processed games so no data is lost.
+    """
     url = build_lichess_url(selected_month)
     print(f"Streaming {url}")
     records: list[dict[str, Any]] = []
@@ -951,14 +946,14 @@ def build_dataset(config: Config, selected_month: str) -> tuple[pd.DataFrame, Da
     parsed_games = 0
     header_eligible = 0
 
-    for attempt in range(MAX_STREAM_RETRIES):
+    for attempt in range(_MAX_STREAM_RETRIES):
         if attempt > 0:
-            delay = STREAM_RETRY_BASE_DELAY_SECONDS * (2 ** (attempt - 1))
-            print(
-                f"Retry {attempt}/{MAX_STREAM_RETRIES - 1}: reconnecting in {delay:.0f}s "
-                f"(skipping first {parsed_games:,} parsed games)"
-            )
+            delay = _STREAM_RETRY_BASE_DELAY * (2 ** (attempt - 1))
+            print(f"Retry {attempt}/{_MAX_STREAM_RETRIES - 1}: reconnecting in {delay:.0f}s "
+                  f"(skipping first {parsed_games:,} parsed games)...")
             time.sleep(delay)
+            print(f"Reconnected. Resuming from game {parsed_games:,}...")
+
         try:
             for game in stream_pgn_games(url, skip_games=parsed_games):
                 parsed_games += 1
@@ -981,15 +976,17 @@ def build_dataset(config: Config, selected_month: str) -> tuple[pd.DataFrame, Da
                     print(f"Collected {len(records):,} eligible games from {parsed_games:,} parsed games")
                 if len(records) >= config.target_games:
                     break
+            # Stream ended cleanly (no exception).
             break
         except _StreamInterrupted as exc:
-            print(f"Warning: stream interrupted after {len(records):,} eligible records: {exc}")
-            if attempt == MAX_STREAM_RETRIES - 1:
+            print(f"Warning: stream interrupted after {len(records):,} records — {exc}")
+            if attempt == _MAX_STREAM_RETRIES - 1:
                 raise RuntimeError(
-                    f"Stream failed after {MAX_STREAM_RETRIES} attempts. "
-                    f"Collected {len(records):,}/{config.target_games:,} eligible games."
+                    f"Stream failed after {_MAX_STREAM_RETRIES} attempts. "
+                    f"Collected {len(records):,}/{config.target_games:,} games."
                 ) from exc
-            continue
+            continue  # Retry outer loop.
+
         if len(records) >= config.target_games:
             break
 
@@ -1602,10 +1599,37 @@ def run_report_best_models(
     require_two_classes(y_train, "Report-selected classifiers")
 
     feature_cols = model_feature_columns(df, use_history=True, use_clock=True, use_enhanced_board=True)
+    after3_text_cols = ["first_3_moves_text", "player_pair_text"]
+    after10_text_cols = ["first_10_moves_text", "player_pair_text"]
+    
+    print("\n[Improvement] Training Text Meta-Classifiers for Stacking in Heavy Models...")
+    text_meta_m3 = build_classifier_pipeline(
+        numeric_cols=[],
+        text_cols=after3_text_cols,
+        hashing_features=config.hashing_features,
+        random_seed=config.random_seed,
+        c_value=0.25
+    )
+    text_meta_m10 = build_classifier_pipeline(
+        numeric_cols=[],
+        text_cols=after10_text_cols,
+        hashing_features=config.hashing_features,
+        random_seed=config.random_seed,
+        c_value=0.25
+    )
+    text_meta_m3.fit(train_df[after3_text_cols], y_train)
+    text_meta_m10.fit(train_df[after10_text_cols], y_train)
+    
+    train_df["meta_text_win_prob_m3"] = text_meta_m3.predict_proba(train_df[after3_text_cols])[:, 1]
+    val_df["meta_text_win_prob_m3"] = text_meta_m3.predict_proba(val_df[after3_text_cols])[:, 1]
+    train_df["meta_text_win_prob_m10"] = text_meta_m10.predict_proba(train_df[after10_text_cols])[:, 1]
+    val_df["meta_text_win_prob_m10"] = text_meta_m10.predict_proba(val_df[after10_text_cols])[:, 1]
+
+    feature_cols = model_feature_columns(df, use_history=True, use_clock=True, use_enhanced_board=True)
     before_hist_cols = feature_cols["before_numeric"]
-    after3_sf_cols = feature_cols["after3_numeric"] + ["sf3_cp", "sf3_mate"]
-    after10_sf_cols = feature_cols["after10_numeric"] + ["sf3_cp", "sf3_mate", "sf10_cp", "sf10_mate", "sf10_cp_diff"]
-    elo_sf_cols = feature_cols["elo_after10_numeric"] + ["sf3_cp", "sf3_mate", "sf10_cp", "sf10_mate", "sf10_cp_diff"]
+    after3_sf_cols = feature_cols["after3_numeric"] + ["sf3_cp", "sf3_mate", "meta_text_win_prob_m3"]
+    after10_sf_cols = feature_cols["after10_numeric"] + ["sf3_cp", "sf3_mate", "sf10_cp", "sf10_mate", "sf10_cp_diff", "meta_text_win_prob_m10"]
+    elo_sf_cols = feature_cols["elo_after10_numeric"] + ["sf3_cp", "sf3_mate", "sf10_cp", "sf10_mate", "sf10_cp_diff", "meta_text_win_prob_m10"]
 
     t1_model = build_classifier_pipeline(
         numeric_cols=before_hist_cols,
@@ -1751,20 +1775,22 @@ def load_boosting_classes() -> tuple[Any, Any, Any, Any]:
 
 
 def boosting_classifier_configs(random_seed: int) -> list[tuple[str, str, dict[str, Any]]]:
+    """Classifier configs scaled for 100k dataset with stronger regularization headroom."""
     return [
         (
             "lightgbm",
             "conservative",
             {
-                "n_estimators": 200,
+                "n_estimators": 300,
                 "learning_rate": 0.03,
-                "num_leaves": 15,
+                "num_leaves": 20,
                 "max_depth": 4,
                 "subsample": 0.8,
                 "colsample_bytree": 0.8,
                 "reg_lambda": 5.0,
+                "min_child_samples": 50,
                 "random_state": random_seed,
-                "n_jobs": 1,
+                "n_jobs": -1,
                 "verbose": -1,
             },
         ),
@@ -1772,15 +1798,16 @@ def boosting_classifier_configs(random_seed: int) -> list[tuple[str, str, dict[s
             "lightgbm",
             "balanced",
             {
-                "n_estimators": 400,
+                "n_estimators": 600,
                 "learning_rate": 0.05,
-                "num_leaves": 31,
+                "num_leaves": 40,
                 "max_depth": 6,
                 "subsample": 0.9,
                 "colsample_bytree": 0.9,
                 "reg_lambda": 2.0,
+                "min_child_samples": 30,
                 "random_state": random_seed,
-                "n_jobs": 1,
+                "n_jobs": -1,
                 "verbose": -1,
             },
         ),
@@ -1788,17 +1815,18 @@ def boosting_classifier_configs(random_seed: int) -> list[tuple[str, str, dict[s
             "xgboost",
             "conservative",
             {
-                "n_estimators": 200,
+                "n_estimators": 300,
                 "learning_rate": 0.03,
                 "max_depth": 3,
                 "subsample": 0.8,
                 "colsample_bytree": 0.8,
                 "reg_lambda": 5.0,
+                "min_child_weight": 20,
                 "objective": "binary:logistic",
                 "eval_metric": "logloss",
                 "tree_method": "hist",
                 "random_state": random_seed,
-                "n_jobs": 1,
+                "n_jobs": -1,
                 "verbosity": 0,
             },
         ),
@@ -1806,17 +1834,18 @@ def boosting_classifier_configs(random_seed: int) -> list[tuple[str, str, dict[s
             "xgboost",
             "balanced",
             {
-                "n_estimators": 400,
+                "n_estimators": 600,
                 "learning_rate": 0.05,
                 "max_depth": 4,
                 "subsample": 0.9,
                 "colsample_bytree": 0.9,
                 "reg_lambda": 2.0,
+                "min_child_weight": 10,
                 "objective": "binary:logistic",
                 "eval_metric": "logloss",
                 "tree_method": "hist",
                 "random_state": random_seed,
-                "n_jobs": 1,
+                "n_jobs": -1,
                 "verbosity": 0,
             },
         ),
@@ -1824,20 +1853,22 @@ def boosting_classifier_configs(random_seed: int) -> list[tuple[str, str, dict[s
 
 
 def boosting_regressor_configs(random_seed: int) -> list[tuple[str, str, dict[str, Any]]]:
+    """Regressor configs scaled for 100k dataset."""
     return [
         (
             "lightgbm",
             "conservative",
             {
-                "n_estimators": 200,
+                "n_estimators": 300,
                 "learning_rate": 0.03,
-                "num_leaves": 15,
+                "num_leaves": 20,
                 "max_depth": 4,
                 "subsample": 0.8,
                 "colsample_bytree": 0.8,
                 "reg_lambda": 5.0,
+                "min_child_samples": 50,
                 "random_state": random_seed,
-                "n_jobs": 1,
+                "n_jobs": -1,
                 "verbose": -1,
             },
         ),
@@ -1845,15 +1876,16 @@ def boosting_regressor_configs(random_seed: int) -> list[tuple[str, str, dict[st
             "lightgbm",
             "balanced",
             {
-                "n_estimators": 400,
+                "n_estimators": 600,
                 "learning_rate": 0.05,
-                "num_leaves": 31,
+                "num_leaves": 40,
                 "max_depth": 6,
                 "subsample": 0.9,
                 "colsample_bytree": 0.9,
                 "reg_lambda": 2.0,
+                "min_child_samples": 30,
                 "random_state": random_seed,
-                "n_jobs": 1,
+                "n_jobs": -1,
                 "verbose": -1,
             },
         ),
@@ -1861,16 +1893,17 @@ def boosting_regressor_configs(random_seed: int) -> list[tuple[str, str, dict[st
             "xgboost",
             "conservative",
             {
-                "n_estimators": 200,
+                "n_estimators": 300,
                 "learning_rate": 0.03,
                 "max_depth": 3,
                 "subsample": 0.8,
                 "colsample_bytree": 0.8,
                 "reg_lambda": 5.0,
+                "min_child_weight": 20,
                 "objective": "reg:squarederror",
                 "tree_method": "hist",
                 "random_state": random_seed,
-                "n_jobs": 1,
+                "n_jobs": -1,
                 "verbosity": 0,
             },
         ),
@@ -1878,16 +1911,17 @@ def boosting_regressor_configs(random_seed: int) -> list[tuple[str, str, dict[st
             "xgboost",
             "balanced",
             {
-                "n_estimators": 400,
+                "n_estimators": 600,
                 "learning_rate": 0.05,
                 "max_depth": 4,
                 "subsample": 0.9,
                 "colsample_bytree": 0.9,
                 "reg_lambda": 2.0,
+                "min_child_weight": 10,
                 "objective": "reg:squarederror",
                 "tree_method": "hist",
                 "random_state": random_seed,
-                "n_jobs": 1,
+                "n_jobs": -1,
                 "verbosity": 0,
             },
         ),
@@ -1900,9 +1934,16 @@ def build_boosting_classifier(
     numeric_cols: list[str],
     classes: tuple[Any, Any, Any, Any],
 ) -> Pipeline:
+    """Build a boosting classifier wrapped with Isotonic Calibration.
+
+    CalibratedClassifierCV (isotonic) fixes the poor probability calibration
+    of gradient boosting on classification tasks, directly improving Log Loss
+    and Brier Score without sacrificing AUC.
+    """
     LGBMClassifier, _, XGBClassifier, _ = classes
-    model = LGBMClassifier(**params) if library == "lightgbm" else XGBClassifier(**params)
-    return numeric_model_pipeline(numeric_cols, model)
+    base_model = LGBMClassifier(**params) if library == "lightgbm" else XGBClassifier(**params)
+    calibrated_model = CalibratedClassifierCV(base_model, method="isotonic", cv=3)
+    return numeric_model_pipeline(numeric_cols, calibrated_model)
 
 
 def build_boosting_regressor(
@@ -1957,17 +1998,40 @@ def run_boosting_experiments(
     enhanced_clock = model_feature_columns(df, use_history=False, use_clock=True, use_enhanced_board=True)
     elo_base = model_feature_columns(df, use_history=True, use_clock=False, use_enhanced_board=False)["elo_after10_numeric"]
 
-    before_base = base_no_clock["before_numeric"]
-    before_history = enhanced_history["before_numeric"]
-    after3_base = base_no_clock["after3_numeric"]
-    after3_enhanced = enhanced_no_history["after3_numeric"]
-    after10_base_clock = base_clock["after10_numeric"]
-    after10_enhanced_clock = enhanced_clock["after10_numeric"]
-    elo_enhanced = enhanced_history["elo_after10_numeric"]
-
     after3_text_cols = ["first_3_moves_text", "player_pair_text"]
     after10_text_cols = ["first_10_moves_text", "player_pair_text"]
     elo_text_cols = ["first_10_moves_text", "player_pair_text"]
+
+    print("\n[Improvement] Training Text Meta-Classifiers for Stacking...")
+    text_meta_m3 = build_classifier_pipeline(
+        numeric_cols=[],
+        text_cols=after3_text_cols,
+        hashing_features=config.hashing_features,
+        random_seed=config.random_seed,
+        c_value=0.25
+    )
+    text_meta_m10 = build_classifier_pipeline(
+        numeric_cols=[],
+        text_cols=after10_text_cols,
+        hashing_features=config.hashing_features,
+        random_seed=config.random_seed,
+        c_value=0.25
+    )
+    text_meta_m3.fit(train_df[after3_text_cols], y_train)
+    text_meta_m10.fit(train_df[after10_text_cols], y_train)
+    
+    train_df["meta_text_win_prob_m3"] = text_meta_m3.predict_proba(train_df[after3_text_cols])[:, 1]
+    val_df["meta_text_win_prob_m3"] = text_meta_m3.predict_proba(val_df[after3_text_cols])[:, 1]
+    train_df["meta_text_win_prob_m10"] = text_meta_m10.predict_proba(train_df[after10_text_cols])[:, 1]
+    val_df["meta_text_win_prob_m10"] = text_meta_m10.predict_proba(val_df[after10_text_cols])[:, 1]
+
+    before_base = base_no_clock["before_numeric"]
+    before_history = enhanced_history["before_numeric"]
+    after3_base = base_no_clock["after3_numeric"]
+    after3_enhanced = enhanced_no_history["after3_numeric"] + ["meta_text_win_prob_m3"]
+    after10_base_clock = base_clock["after10_numeric"]
+    after10_enhanced_clock = enhanced_clock["after10_numeric"] + ["meta_text_win_prob_m10"]
+    elo_enhanced = enhanced_history["elo_after10_numeric"] + ["meta_text_win_prob_m10"]
     feature_sets = {
         "before_base": before_base,
         "before_history": before_history,
@@ -2373,12 +2437,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--train-ratio", type=float, default=DEFAULT_TRAIN_RATIO)
     parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--hashing-features", type=int, default=DEFAULT_HASHING_FEATURES)
-    parser.add_argument(
-        "--model-profile",
-        choices=["lightweight", "boosting"],
-        default="lightweight",
-        help="Normal training path profile. 'boosting' uses optional LightGBM/XGBoost without Stockfish.",
-    )
     parser.add_argument("--run-experiments", action="store_true", help="Run compact 10k config experiments.")
     parser.add_argument("--run-clock-experiments", action="store_true", help="Run compact 10k clock feature experiments.")
     parser.add_argument("--run-report-best-models", action="store_true", help="Run report-selected Stockfish/tree model experiment.")
@@ -2434,36 +2492,16 @@ def main() -> None:
         return
 
     df, dataset_build_stats = build_dataset(config, selected_month)
-    if args.model_profile == "boosting":
-        df = ensure_enhanced_board_features(df)
     train_df, val_df = split_train_validation(df, config.train_ratio)
     print_dataset_summary(df, train_df, val_df, config, selected_month)
 
-    if args.model_profile == "boosting":
-        optional_classes = load_boosting_classes()
-        warnings.filterwarnings(
-            "ignore",
-            message=r"X does not have valid feature names, but LGBM.*",
-            category=UserWarning,
-        )
-        before_feature_cols = model_feature_columns(df, use_history=False, use_clock=False, use_enhanced_board=False)["before_numeric"]
-        after3_feature_cols = model_feature_columns(df, use_history=False, use_clock=False, use_enhanced_board=True)["after3_numeric"]
-        after10_feature_cols = model_feature_columns(df, use_history=False, use_clock=True, use_enhanced_board=True)["after10_numeric"]
-        elo_feature_cols = model_feature_columns(df, use_history=True, use_clock=False, use_enhanced_board=True)["elo_after10_numeric"]
-        after3_text_cols: list[str] = []
-        after10_text_cols: list[str] = []
-        elo_text_cols: list[str] = []
-        xgb_after3_params = dict(boosting_classifier_configs(config.random_seed)[2][2])
-        xgb_after10_params = dict(boosting_classifier_configs(config.random_seed)[3][2])
-        lgbm_elo_params = dict(boosting_regressor_configs(config.random_seed)[1][2])
-    else:
-        before_feature_cols = model_feature_columns(df, use_history=False, use_clock=False)["before_numeric"]
-        after3_feature_cols = model_feature_columns(df, use_history=False, use_clock=False)["after3_numeric"]
-        after10_feature_cols = model_feature_columns(df, use_history=False, use_clock=True)["after10_numeric"]
-        elo_feature_cols = model_feature_columns(df, use_history=True, use_clock=False)["elo_after10_numeric"]
-        after3_text_cols = ["first_3_moves_text", "player_pair_text"]
-        after10_text_cols = ["first_10_moves_text", "player_pair_text"]
-        elo_text_cols = ["first_10_moves_text", "player_pair_text"]
+    before_feature_cols = model_feature_columns(df, use_history=False, use_clock=False)["before_numeric"]
+    after3_feature_cols = model_feature_columns(df, use_history=False, use_clock=False)["after3_numeric"]
+    after10_feature_cols = model_feature_columns(df, use_history=False, use_clock=True)["after10_numeric"]
+    elo_feature_cols = model_feature_columns(df, use_history=True, use_clock=False)["elo_after10_numeric"]
+    after3_text_cols = ["first_3_moves_text", "player_pair_text"]
+    after10_text_cols = ["first_10_moves_text", "player_pair_text"]
+    elo_text_cols = ["first_10_moves_text", "player_pair_text"]
 
     print("\nFinal selected feature columns used")
     selected_feature_sets = {
@@ -2490,30 +2528,25 @@ def main() -> None:
         random_seed=config.random_seed,
         c_value=1.0,
     )
-    if args.model_profile == "boosting":
-        after3_model = build_boosting_classifier("xgboost", xgb_after3_params, after3_feature_cols, optional_classes)
-        after10_model = build_boosting_classifier("xgboost", xgb_after10_params, after10_feature_cols, optional_classes)
-        elo_model = build_boosting_regressor("lightgbm", lgbm_elo_params, elo_feature_cols, optional_classes)
-    else:
-        after3_model = build_classifier_pipeline(
-            numeric_cols=after3_feature_cols,
-            text_cols=after3_text_cols,
-            hashing_features=config.hashing_features,
-            random_seed=config.random_seed,
-            c_value=0.25,
-        )
-        after10_model = build_classifier_pipeline(
-            numeric_cols=after10_feature_cols,
-            text_cols=after10_text_cols,
-            hashing_features=config.hashing_features,
-            random_seed=config.random_seed,
-            c_value=0.25,
-        )
-        elo_model = build_elo_regression_pipeline(
-            numeric_cols=elo_feature_cols,
-            text_cols=elo_text_cols,
-            hashing_features=config.hashing_features,
-        )
+    after3_model = build_classifier_pipeline(
+        numeric_cols=after3_feature_cols,
+        text_cols=after3_text_cols,
+        hashing_features=config.hashing_features,
+        random_seed=config.random_seed,
+        c_value=0.25,
+    )
+    after10_model = build_classifier_pipeline(
+        numeric_cols=after10_feature_cols,
+        text_cols=after10_text_cols,
+        hashing_features=config.hashing_features,
+        random_seed=config.random_seed,
+        c_value=0.25,
+    )
+    elo_model = build_elo_regression_pipeline(
+        numeric_cols=elo_feature_cols,
+        text_cols=elo_text_cols,
+        hashing_features=config.hashing_features,
+    )
 
     # All preprocessing is fit on train_df through sklearn Pipelines. Validation
     # rows are only transformed/predicted after fitting, preventing leakage.
@@ -2529,33 +2562,9 @@ def main() -> None:
     elo_mean_predictions = elo_mean_baseline_predictions(train_df, val_df)
     majority_metrics = majority_class_baseline(train_df, val_df)
 
-    if args.model_profile == "boosting":
-        feature_notes = {
-            "model_profile": "boosting",
-            "selected_from_boosting_no_stockfish_100k": True,
-            "white_win_before": "production_logreg_C1.0",
-            "white_win_after_3": "xgboost_conservative_after3_enhanced",
-            "white_win_after_10": "xgboost_balanced_after10_enhanced_clock",
-            "elo_after_10": "lightgbm_balanced_elo_enhanced_history",
-            "boosting_dependencies_in": "requirements-experiments.txt",
-            "stockfish_or_deep_learning_used": False,
-            "normal_lightweight_requirements_changed": False,
-            "lightweight_enhanced_board_features_selected": True,
-            "clock_features_used_for": "white_win_after_10_only",
-            "history_features_used_for": "elo_regression_only",
-            "identity_features_used_for": [],
-            "causal_player_history_features": True,
-            "history_features_computed_before_current_game_update": True,
-            "clock_features_limited_to_allowed_plies": True,
-            "current_elo_excluded_from_elo_features": True,
-            "bayesian_history_smoothing": USE_HISTORY_BAYESIAN_SMOOTHING,
-            "history_virtual_games": HISTORY_BAYESIAN_VIRTUAL_GAMES if USE_HISTORY_BAYESIAN_SMOOTHING else 0.0,
-            "time_pressure_features": True,
-            "stream_retry_resume": True,
-        }
-    else:
-        feature_notes = {
-            "model_profile": "lightweight",
+    metrics = {
+        "run_config": {**asdict(config), "selected_month": selected_month},
+        "feature_notes": {
             "selected_configs_from_10k_experiments": True,
             "lightweight_enhanced_board_features_available": True,
             "lightweight_enhanced_board_features_selected": False,
@@ -2573,15 +2582,7 @@ def main() -> None:
             "player_identity_hashed_features": True,
             "stockfish_or_deep_learning_used": False,
             "heavy_dependencies_added": False,
-            "bayesian_history_smoothing": USE_HISTORY_BAYESIAN_SMOOTHING,
-            "history_virtual_games": HISTORY_BAYESIAN_VIRTUAL_GAMES if USE_HISTORY_BAYESIAN_SMOOTHING else 0.0,
-            "time_pressure_features": True,
-            "stream_retry_resume": True,
-        }
-
-    metrics = {
-        "run_config": {**asdict(config), "selected_month": selected_month, "model_profile": args.model_profile},
-        "feature_notes": feature_notes,
+        },
         "dataset_summary": {
             "parsed_games": int(dataset_build_stats.parsed_games),
             "header_eligible_games": int(dataset_build_stats.header_eligible_games),

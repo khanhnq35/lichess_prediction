@@ -2,6 +2,22 @@
 
 This project is a compact, reproducible solution for the Quantitative Research Intern take-home assessment. It streams a monthly Lichess standard rated PGN archive, extracts the first eligible Blitz games, trains four simple models, and writes validation metrics and predictions.
 
+## Project Organization
+
+The repository is organized so the production pipeline is easy to separate from experiments and historical outputs:
+
+- `problem.md`: original assessment statement and main contract.
+- `solution.py`: production pipeline and optional experiment modes.
+- `docs/`: project map, traceability, artifact index, runbook, decision log, and submission scope.
+- `docs/agents/`: handoff notes for Codex/agy collaboration.
+- `artifacts/production/`: selected full-run production outputs.
+- `artifacts/experiments/`: 10k experiments and heavy/Stockfish reference runs.
+- `artifacts/audits/`, `artifacts/robustness/`, `artifacts/xai/`: supporting analysis outputs.
+- `scripts/analysis/`: optional audit, robustness, and explainability scripts.
+- `experiment/`: exploratory framework; not the source of truth for the lightweight final pipeline.
+
+Start with `docs/PROJECT_MAP.md`, `docs/ARTIFACT_INDEX.md`, and `docs/DECISION_LOG.md` if continuing the project with another agent.
+
 ## Data Source
 
 The pipeline uses the Lichess open database:
@@ -120,6 +136,17 @@ white=<white_name> black=<black_name>
 They are encoded with `HashingVectorizer`, so no learned vocabulary or large model artifact is stored. Usernames are known before the game, so this is not post-game leakage. However, identity features mostly help repeat-player prediction and may not generalize to completely unseen players.
 
 The `--run-clock-experiments` mode additionally tests clock features parsed from Lichess PGN comments such as `[%clk H:MM:SS]` or `[%clk M:SS]`. Clock features are only computed from observed clocks within the allowed prediction window: first 6 plies for after-3 models and first 20 plies for after-10/Elo models. They include remaining clock, approximate time used, average time per move, clock differences, missing counts, and availability flags. No future clock values or total game length are used.
+
+The `--run-boosting-experiments` mode optionally tests LightGBM and XGBoost without Stockfish. These packages are listed in `requirements-experiments.txt`, not in the main `requirements.txt`, so the default assessment pipeline remains lightweight and uses only the required dependencies.
+
+A full 100k verification run (`--run-boosting-experiments` with cache CSV) shows the following results:
+- **T1 Before**: Baseline Logistic Regression (ROC-AUC **0.5788**) outperforms LightGBM (ROC-AUC **0.5772**).
+- **T2 After-3**: XGBoost (ROC-AUC **0.5785**) improves over Baseline (ROC-AUC **0.5667**).
+- **T3 After-10**: XGBoost (ROC-AUC **0.6228**) improves over Baseline (ROC-AUC **0.6107**).
+- **T4 Elo**: LightGBM (Avg MAE **29.27 ELO**) dramatically improves over Ridge Baseline (Avg MAE **91.52 ELO**).
+
+While Boosting brings substantial gains in T2, T3, and T4, the production path default continues to use simple, lightweight scikit-learn models. This avoids compiler and binary installation issues (e.g., LibOMP) on automated grading servers while keeping the Boosting pipeline available as an optional experiment appendix.
+
 
 ## Model Selection
 
@@ -254,6 +281,15 @@ Run the final assessment-scale pipeline:
 ```bash
 python solution.py --target-games 100000 --output-dir outputs_full
 ```
+
+Run the optional no-Stockfish boosting profile:
+
+```bash
+pip install -r requirements-experiments.txt
+python solution.py --target-games 100000 --output-dir outputs_full_boosting --model-profile boosting
+```
+
+The default profile remains `lightweight`; the boosting profile requires optional LightGBM/XGBoost dependencies and is intended for improved experiments or appendix results.
 
 Useful CLI options:
 

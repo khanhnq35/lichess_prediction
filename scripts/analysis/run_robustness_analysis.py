@@ -14,8 +14,8 @@ from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import StandardScaler
 
-# Add project root to sys.path
-sys.path.append("/Users/khanhnq35/Documents/Chess")
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(PROJECT_ROOT))
 
 import solution
 from experiment.data_loader import get_dataset, get_train_val_split
@@ -36,7 +36,7 @@ def main():
     print("=== STARTING ROBUSTNESS, CALIBRATION, AND STRESS TEST ANALYSIS ===")
     
     # 0. Setup directories
-    robustness_dir = Path("/Users/khanhnq35/Documents/Chess/outputs_robustness")
+    robustness_dir = PROJECT_ROOT / "artifacts" / "robustness" / "current"
     robustness_dir.mkdir(parents=True, exist_ok=True)
     
     # ----------------------------------------------------
@@ -133,7 +133,7 @@ def main():
     # TASK B: Calibration and Lift Analysis
     # ----------------------------------------------------
     print("\n--- TASK B: Calibration & Lift Analysis (Validation Predictions) ---")
-    predictions_path = Path("/Users/khanhnq35/Documents/Chess/outputs_full_final_selected/validation_predictions.csv")
+    predictions_path = PROJECT_ROOT / "artifacts" / "production" / "full_final_selected" / "validation_predictions.csv"
     if not predictions_path.exists():
         print("ERROR: validation_predictions.csv from 100K final selected output not found! Cannot perform calibration/lift.")
         sys.exit(1)
@@ -265,7 +265,7 @@ def main():
     df_100k = get_dataset(100000)
     df_enhanced = enhance_dataframe(df_100k)
     
-    stockfish_cache_path = Path("/Users/khanhnq35/Documents/Chess/experiment/stockfish_cache.json")
+    stockfish_cache_path = PROJECT_ROOT / "experiment" / "stockfish_cache.json"
     if stockfish_cache_path.exists():
         print("Mapping Stockfish cache...")
         with open(stockfish_cache_path, "r") as f:
@@ -478,7 +478,7 @@ def main():
     
     # Calculate workspace size
     import subprocess
-    du_cmd = subprocess.run(["du", "-sh", "/Users/khanhnq35/Documents/Chess"], capture_output=True, text=True)
+    du_cmd = subprocess.run(["du", "-sh", str(PROJECT_ROOT)], capture_output=True, text=True)
     ws_size = du_cmd.stdout.strip().split()[0]
     
     with open(final_report_md, "w") as f:

@@ -1,0 +1,342 @@
+{
+  "target_games": 10000,
+  "runtime_seconds": 95.16939187049866,
+  "results": [
+    {
+      "task": "T2_after3",
+      "model_name": "LogisticRegression",
+      "mode": "No Stockfish (A)",
+      "auc": 0.5684582738330953,
+      "log_loss": 0.6806014806737175,
+      "accuracy": 0.5365,
+      "fit_time_seconds": 1.556082010269165
+    },
+    {
+      "task": "T2_after3",
+      "model_name": "LogisticRegression",
+      "mode": "With Stockfish (B)",
+      "auc": 0.5681782727130908,
+      "log_loss": 0.6805837445672309,
+      "accuracy": 0.5385,
+      "fit_time_seconds": 1.4107871055603027
+    },
+    {
+      "task": "T2_after3",
+      "model_name": "GradientBoosting",
+      "mode": "No Stockfish (A)",
+      "auc": 0.5788308153232613,
+      "log_loss": 0.6805251601732659,
+      "accuracy": 0.548,
+      "fit_time_seconds": 4.690864086151123
+    },
+    {
+      "task": "T2_after3",
+      "model_name": "GradientBoosting",
+      "mode": "With Stockfish (B)",
+      "auc": 0.574312297249189,
+      "log_loss": 0.6827595157386368,
+      "accuracy": 0.5415,
+      "fit_time_seconds": 4.860213994979858
+    },
+    {
+      "task": "T2_after3",
+      "model_name": "HistGradientBoosting",
+      "mode": "No Stockfish (A)",
+      "auc": 0.566305265221061,
+      "log_loss": 0.7000122432676944,
+      "accuracy": 0.5435,
+      "fit_time_seconds": 0.9056611061096191
+    },
+    {
+      "task": "T2_after3",
+      "model_name": "HistGradientBoosting",
+      "mode": "With Stockfish (B)",
+      "auc": 0.5616492465969865,
+      "log_loss": 0.7060791465847481,
+      "accuracy": 0.533,
+      "fit_time_seconds": 0.8273749351501465
+    },
+    {
+      "task": "T2_after3",
+      "model_name": "RandomForest",
+      "mode": "No Stockfish (A)",
+      "auc": 0.5618282473129892,
+      "log_loss": 0.6846652317902486,
+      "accuracy": 0.533,
+      "fit_time_seconds": 0.30715298652648926
+    },
+    {
+      "task": "T2_after3",
+      "model_name": "RandomForest",
+      "mode": "With Stockfish (B)",
+      "auc": 0.5625592502370009,
+      "log_loss": 0.6847479072525956,
+      "accuracy": 0.5305,
+      "fit_time_seconds": 0.24875378608703613
+    },
+    {
+      "task": "T2_after3",
+      "model_name": "LightGBM",
+      "mode": "No Stockfish (A)",
+      "auc": 0.5736752947011787,
+      "log_loss": 0.6790694520099056,
+      "accuracy": 0.532,
+      "fit_time_seconds": 0.4252798557281494
+    },
+    {
+      "task": "T2_after3",
+      "model_name": "LightGBM",
+      "mode": "With Stockfish (B)",
+      "auc": 0.5712642850571402,
+      "log_loss": 0.6802452842961189,
+      "accuracy": 0.53,
+      "fit_time_seconds": 0.4329819679260254
+    },
+    {
+      "task": "T2_after3",
+      "model_name": "XGBoost",
+      "mode": "No Stockfish (A)",
+      "auc": 0.5794543178172712,
+      "log_loss": 0.6776248792832495,
+      "accuracy": 0.544,
+      "fit_time_seconds": 0.32373499870300293
+    },
+    {
+      "task": "T2_after3",
+      "model_name": "XGBoost",
+      "mode": "With Stockfish (B)",
+      "auc": 0.5813648254593018,
+      "log_loss": 0.677708419061554,
+      "accuracy": 0.5435,
+      "fit_time_seconds": 0.32768726348876953
+    },
+    {
+      "task": "T3_after10",
+      "model_name": "LogisticRegression",
+      "mode": "No Stockfish (A)",
+      "auc": 0.619502478009912,
+      "log_loss": 0.6650888509306735,
+      "accuracy": 0.57,
+      "fit_time_seconds": 1.148186206817627
+    },
+    {
+      "task": "T3_after10",
+      "model_name": "LogisticRegression",
+      "mode": "With Stockfish (B)",
+      "auc": 0.6420425681702727,
+      "log_loss": 0.6586735727175494,
+      "accuracy": 0.593,
+      "fit_time_seconds": 2.4545669555664062
+    },
+    {
+      "task": "T3_after10",
+      "model_name": "GradientBoosting",
+      "mode": "No Stockfish (A)",
+      "auc": 0.6084944339777358,
+      "log_loss": 0.669841613143624,
+      "accuracy": 0.557,
+      "fit_time_seconds": 6.384847164154053
+    },
+    {
+      "task": "T3_after10",
+      "model_name": "GradientBoosting",
+      "mode": "With Stockfish (B)",
+      "auc": 0.6549236196944788,
+      "log_loss": 0.6502743529927282,
+      "accuracy": 0.599,
+      "fit_time_seconds": 6.92105507850647
+    },
+    {
+      "task": "T3_after10",
+      "model_name": "HistGradientBoosting",
+      "mode": "No Stockfish (A)",
+      "auc": 0.5978593914375657,
+      "log_loss": 0.6829755244760591,
+      "accuracy": 0.5635,
+      "fit_time_seconds": 0.8422107696533203
+    },
+    {
+      "task": "T3_after10",
+      "model_name": "HistGradientBoosting",
+      "mode": "With Stockfish (B)",
+      "auc": 0.6320045280181121,
+      "log_loss": 0.6668950903297823,
+      "accuracy": 0.583,
+      "fit_time_seconds": 0.8432798385620117
+    },
+    {
+      "task": "T3_after10",
+      "model_name": "RandomForest",
+      "mode": "No Stockfish (A)",
+      "auc": 0.601811407245629,
+      "log_loss": 0.6760119590158571,
+      "accuracy": 0.5695,
+      "fit_time_seconds": 0.3580951690673828
+    },
+    {
+      "task": "T3_after10",
+      "model_name": "RandomForest",
+      "mode": "With Stockfish (B)",
+      "auc": 0.6402995611982447,
+      "log_loss": 0.6641147731663523,
+      "accuracy": 0.6015,
+      "fit_time_seconds": 0.2709791660308838
+    },
+    {
+      "task": "T3_after10",
+      "model_name": "LightGBM",
+      "mode": "No Stockfish (A)",
+      "auc": 0.612310449241797,
+      "log_loss": 0.6666747664949335,
+      "accuracy": 0.564,
+      "fit_time_seconds": 0.4409010410308838
+    },
+    {
+      "task": "T3_after10",
+      "model_name": "LightGBM",
+      "mode": "With Stockfish (B)",
+      "auc": 0.6504606018424074,
+      "log_loss": 0.6523608364679319,
+      "accuracy": 0.589,
+      "fit_time_seconds": 0.45145416259765625
+    },
+    {
+      "task": "T3_after10",
+      "model_name": "XGBoost",
+      "mode": "No Stockfish (A)",
+      "auc": 0.6127754511018044,
+      "log_loss": 0.6686467166689801,
+      "accuracy": 0.563,
+      "fit_time_seconds": 0.3338003158569336
+    },
+    {
+      "task": "T3_after10",
+      "model_name": "XGBoost",
+      "mode": "With Stockfish (B)",
+      "auc": 0.6511366045464182,
+      "log_loss": 0.651969070826224,
+      "accuracy": 0.598,
+      "fit_time_seconds": 0.3657400608062744
+    },
+    {
+      "task": "T4_elo",
+      "model_name": "Ridge",
+      "mode": "No Stockfish (A)",
+      "avg_mae": 146.14072091639474,
+      "white_mae": 147.9677288087852,
+      "black_mae": 144.31371302400424,
+      "avg_r2": 0.7197946058413346,
+      "fit_time_seconds": 0.009557962417602539
+    },
+    {
+      "task": "T4_elo",
+      "model_name": "Ridge",
+      "mode": "With Stockfish (B)",
+      "avg_mae": 146.14520333113646,
+      "white_mae": 147.96350049088335,
+      "black_mae": 144.32690617138957,
+      "avg_r2": 0.7198973296148579,
+      "fit_time_seconds": 0.00823974609375
+    },
+    {
+      "task": "T4_elo",
+      "model_name": "GradientBoosting",
+      "mode": "No Stockfish (A)",
+      "avg_mae": 97.11949810024862,
+      "white_mae": 100.5442333208508,
+      "black_mae": 93.69476287964645,
+      "avg_r2": 0.8255908386904743,
+      "fit_time_seconds": 11.31324291229248
+    },
+    {
+      "task": "T4_elo",
+      "model_name": "GradientBoosting",
+      "mode": "With Stockfish (B)",
+      "avg_mae": 100.48658166483712,
+      "white_mae": 103.44020287187156,
+      "black_mae": 97.53296045780267,
+      "avg_r2": 0.8223939614958549,
+      "fit_time_seconds": 12.185607194900513
+    },
+    {
+      "task": "T4_elo",
+      "model_name": "HistGradientBoosting",
+      "mode": "No Stockfish (A)",
+      "avg_mae": 91.11161730669527,
+      "white_mae": 94.27909700454894,
+      "black_mae": 87.94413760884159,
+      "avg_r2": 0.8325721038067926,
+      "fit_time_seconds": 1.8795828819274902
+    },
+    {
+      "task": "T4_elo",
+      "model_name": "HistGradientBoosting",
+      "mode": "With Stockfish (B)",
+      "avg_mae": 91.7675333383344,
+      "white_mae": 93.78823322263948,
+      "black_mae": 89.74683345402934,
+      "avg_r2": 0.8355750306091578,
+      "fit_time_seconds": 1.8772079944610596
+    },
+    {
+      "task": "T4_elo",
+      "model_name": "RandomForest",
+      "mode": "No Stockfish (A)",
+      "avg_mae": 83.32908124217548,
+      "white_mae": 88.08770466588226,
+      "black_mae": 78.5704578184687,
+      "avg_r2": 0.8333279523452508,
+      "fit_time_seconds": 1.9358739852905273
+    },
+    {
+      "task": "T4_elo",
+      "model_name": "RandomForest",
+      "mode": "With Stockfish (B)",
+      "avg_mae": 84.20619258458541,
+      "white_mae": 89.18866407087981,
+      "black_mae": 79.22372109829102,
+      "avg_r2": 0.8329868158811276,
+      "fit_time_seconds": 2.072631597518921
+    },
+    {
+      "task": "T4_elo",
+      "model_name": "LightGBM",
+      "mode": "No Stockfish (A)",
+      "avg_mae": 87.97590542609404,
+      "white_mae": 90.26126378677021,
+      "black_mae": 85.69054706541786,
+      "avg_r2": 0.8364183242173109,
+      "fit_time_seconds": 0.9555330276489258
+    },
+    {
+      "task": "T4_elo",
+      "model_name": "LightGBM",
+      "mode": "With Stockfish (B)",
+      "avg_mae": 89.9656297355771,
+      "white_mae": 92.2146312965336,
+      "black_mae": 87.7166281746206,
+      "avg_r2": 0.8362384480668925,
+      "fit_time_seconds": 0.9860851764678955
+    },
+    {
+      "task": "T4_elo",
+      "model_name": "XGBoost",
+      "mode": "No Stockfish (A)",
+      "avg_mae": 97.80435180664062,
+      "white_mae": 101.51617431640625,
+      "black_mae": 94.092529296875,
+      "avg_r2": 0.8218741416931152,
+      "fit_time_seconds": 0.6705222129821777
+    },
+    {
+      "task": "T4_elo",
+      "model_name": "XGBoost",
+      "mode": "With Stockfish (B)",
+      "avg_mae": 100.63932800292969,
+      "white_mae": 103.66612243652344,
+      "black_mae": 97.61253356933594,
+      "avg_r2": 0.8197542726993561,
+      "fit_time_seconds": 0.6920990943908691
+    }
+  ]
+}

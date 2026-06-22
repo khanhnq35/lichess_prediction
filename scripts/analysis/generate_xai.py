@@ -5,8 +5,8 @@ import pandas as pd
 from pathlib import Path
 from sklearn.pipeline import Pipeline
 
-# Ensure project path is in sys.path
-sys.path.append("/Users/khanhnq35/Documents/Chess")
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(PROJECT_ROOT))
 
 import solution
 
@@ -30,10 +30,10 @@ def extract_linear_coefficients(model, numeric_cols):
 
 def main():
     print("Loading cached dataset...")
-    cache_path = Path("experiment/outputs/cache/games_2023-11_100000.csv.gz")
+    cache_path = PROJECT_ROOT / "experiment" / "outputs" / "cache" / "games_2023-11_100000.csv.gz"
     if not cache_path.exists():
-        print("Cache not found at expected path. Trying outputs/cache...")
-        cache_path = Path("outputs/cache/games_2023-11_100000.csv.gz")
+        print("Cache not found at expected path. Trying artifacts/archive/smoke/outputs_100/cache...")
+        cache_path = PROJECT_ROOT / "artifacts" / "archive" / "smoke" / "outputs_100" / "cache" / "games_2023-11_100000.csv.gz"
     
     if not cache_path.exists():
         print("Error: Cached games dataset not found.")
@@ -118,7 +118,7 @@ def main():
     coef_black_elo = coefs_elo[1]
     
     # Output XAI folder creation
-    xai_dir = Path("outputs_xai")
+    xai_dir = PROJECT_ROOT / "artifacts" / "xai" / "current"
     xai_dir.mkdir(parents=True, exist_ok=True)
     
     # Prepare explainability summary
@@ -130,10 +130,10 @@ def main():
         "black_elo_after_10": dict(zip(elo_feature_cols, coef_black_elo)),
     }
     
-    # Write outputs_xai/model_explainability.json
+    # Write artifacts/xai/current/model_explainability.json
     with open(xai_dir / "model_explainability.json", "w") as f:
         json.dump(explainability_data, f, indent=2)
-    print("Wrote outputs_xai/model_explainability.json")
+    print(f"Wrote {xai_dir / 'model_explainability.json'}")
     
     # Prepare feature importance CSV
     csv_rows = []
@@ -156,15 +156,15 @@ def main():
     importance_df = pd.DataFrame(csv_rows)
     importance_df = importance_df.sort_values(by=["task", "abs_coefficient"], ascending=[True, False])
     importance_df.to_csv(xai_dir / "feature_importance.csv", index=False)
-    print("Wrote outputs_xai/feature_importance.csv")
+    print(f"Wrote {xai_dir / 'feature_importance.csv'}")
     
     # Prediction-level explanation examples
     print("Generating prediction-level explanation examples...")
     
     # Load the validation predictions if available to be exact on predictions
-    pred_path = Path("outputs_full_final_selected/validation_predictions.csv")
+    pred_path = PROJECT_ROOT / "artifacts" / "production" / "full_final_selected" / "validation_predictions.csv"
     if not pred_path.exists():
-        pred_path = Path("outputs/validation_predictions.csv")
+        pred_path = PROJECT_ROOT / "artifacts" / "archive" / "smoke" / "outputs_100" / "validation_predictions.csv"
         
     if pred_path.exists():
         predictions_df = pd.read_csv(pred_path)
@@ -305,7 +305,7 @@ def main():
         
     with open(xai_dir / "prediction_explanation_examples.json", "w") as f:
         json.dump(explanation_examples, f, indent=2)
-    print("Wrote outputs_xai/prediction_explanation_examples.json")
+    print(f"Wrote {xai_dir / 'prediction_explanation_examples.json'}")
     print("XAI scripts completed successfully.")
 
 if __name__ == "__main__":

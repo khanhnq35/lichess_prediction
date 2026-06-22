@@ -9,8 +9,8 @@ from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import StandardScaler
 
-# Add project root to sys.path
-sys.path.append("/Users/khanhnq35/Documents/Chess")
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(PROJECT_ROOT))
 
 import solution
 from experiment.data_loader import get_dataset, get_train_val_split
@@ -28,8 +28,8 @@ def get_prep_pipeline(model, cols):
 def main():
     print("=== STARTING QUANTITATIVE RESEARCH AUDIT ===")
     
-    # Create outputs_audit directory
-    audit_dir = Path("/Users/khanhnq35/Documents/Chess/outputs_audit")
+    # Create audit artifact directory
+    audit_dir = PROJECT_ROOT / "artifacts" / "audits" / "current"
     audit_dir.mkdir(parents=True, exist_ok=True)
     
     # 1. Load 100K dataset and Stockfish Cache
@@ -40,7 +40,7 @@ def main():
     df_enhanced = enhance_dataframe(df)
     
     # Add Stockfish features from cache if available
-    stockfish_cache_path = Path("/Users/khanhnq35/Documents/Chess/experiment/stockfish_cache.json")
+    stockfish_cache_path = PROJECT_ROOT / "experiment" / "stockfish_cache.json"
     if stockfish_cache_path.exists():
         print("Loading Stockfish cache...")
         with open(stockfish_cache_path, "r") as f:

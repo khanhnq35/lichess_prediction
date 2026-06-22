@@ -1,3 +1,16 @@
 .venv/
 __pycache__/
 *.pyc
+
+# Raw Lichess data must not be submitted.
+*.pgn
+*.zst
+*.pgn.zst
+
+# Large/generated caches.
+experiment/outputs/cache/
+experiment/stockfish_cache.json
+
+# New ad-hoc run outputs should be deliberately moved/indexed under artifacts/.
+outputs/
+outputs_*/
