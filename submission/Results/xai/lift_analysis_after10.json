@@ -1,9 +1,9 @@
 {
   "rows": 20000,
-  "top_10_pct_white_win_rate": 0.717,
-  "bottom_10_pct_white_win_rate": 0.2825,
-  "top_minus_bottom_10_pct_lift": 0.4345,
+  "top_10_pct_white_win_rate": 0.712,
+  "bottom_10_pct_white_win_rate": 0.286,
+  "top_minus_bottom_10_pct_lift": 0.426,
   "top_20_pct_white_win_rate": 0.662,
-  "bottom_20_pct_white_win_rate": 0.34625,
-  "top_minus_bottom_20_pct_lift": 0.31575000000000003
+  "bottom_20_pct_white_win_rate": 0.3565,
+  "top_minus_bottom_20_pct_lift": 0.30550000000000005
 }

@@ -2375,9 +2375,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--hashing-features", type=int, default=DEFAULT_HASHING_FEATURES)
     parser.add_argument(
         "--model-profile",
-        choices=["lightweight", "boosting"],
-        default="lightweight",
-        help="Normal training path profile. 'boosting' uses optional LightGBM/XGBoost without Stockfish.",
+        choices=["lightweight", "boosting", "report_best"],
+        default="report_best",
+        help=(
+            "Normal training path profile. 'report_best' uses the best portable sklearn "
+            "configuration selected from the 100k experiments without Stockfish; "
+            "'boosting' keeps the optional LightGBM/XGBoost no-Stockfish profile."
+        ),
     )
     parser.add_argument("--run-experiments", action="store_true", help="Run compact 10k config experiments.")
     parser.add_argument("--run-clock-experiments", action="store_true", help="Run compact 10k clock feature experiments.")
@@ -2434,11 +2438,12 @@ def main() -> None:
         return
 
     df, dataset_build_stats = build_dataset(config, selected_month)
-    if args.model_profile == "boosting":
+    if args.model_profile in {"boosting", "report_best"}:
         df = ensure_enhanced_board_features(df)
     train_df, val_df = split_train_validation(df, config.train_ratio)
     print_dataset_summary(df, train_df, val_df, config, selected_month)
 
+    optional_classes: tuple[Any, Any, Any, Any] | None = None
     if args.model_profile == "boosting":
         optional_classes = load_boosting_classes()
         warnings.filterwarnings(
@@ -2456,6 +2461,14 @@ def main() -> None:
         xgb_after3_params = dict(boosting_classifier_configs(config.random_seed)[2][2])
         xgb_after10_params = dict(boosting_classifier_configs(config.random_seed)[3][2])
         lgbm_elo_params = dict(boosting_regressor_configs(config.random_seed)[1][2])
+    elif args.model_profile == "report_best":
+        before_feature_cols = model_feature_columns(df, use_history=True, use_clock=False, use_enhanced_board=True)["before_numeric"]
+        after3_feature_cols = model_feature_columns(df, use_history=False, use_clock=True, use_enhanced_board=True)["after3_numeric"]
+        after10_feature_cols = model_feature_columns(df, use_history=False, use_clock=True, use_enhanced_board=True)["after10_numeric"]
+        elo_feature_cols = model_feature_columns(df, use_history=True, use_clock=False, use_enhanced_board=True)["elo_after10_numeric"]
+        after3_text_cols = []
+        after10_text_cols = []
+        elo_text_cols = []
     else:
         before_feature_cols = model_feature_columns(df, use_history=False, use_clock=False)["before_numeric"]
         after3_feature_cols = model_feature_columns(df, use_history=False, use_clock=False)["after3_numeric"]
@@ -2491,9 +2504,26 @@ def main() -> None:
         c_value=1.0,
     )
     if args.model_profile == "boosting":
+        assert optional_classes is not None
         after3_model = build_boosting_classifier("xgboost", xgb_after3_params, after3_feature_cols, optional_classes)
         after10_model = build_boosting_classifier("xgboost", xgb_after10_params, after10_feature_cols, optional_classes)
         elo_model = build_boosting_regressor("lightgbm", lgbm_elo_params, elo_feature_cols, optional_classes)
+    elif args.model_profile == "report_best":
+        after3_model = build_classifier_pipeline(
+            numeric_cols=after3_feature_cols,
+            text_cols=[],
+            hashing_features=config.hashing_features,
+            random_seed=config.random_seed,
+            c_value=0.5,
+        )
+        after10_model = numeric_model_pipeline(
+            after10_feature_cols,
+            HistGradientBoostingClassifier(random_state=config.random_seed),
+        )
+        elo_model = numeric_model_pipeline(
+            elo_feature_cols,
+            RandomForestRegressor(n_estimators=100, random_state=config.random_seed, n_jobs=-1),
+        )
     else:
         after3_model = build_classifier_pipeline(
             numeric_cols=after3_feature_cols,
@@ -2543,6 +2573,32 @@ def main() -> None:
             "lightweight_enhanced_board_features_selected": True,
             "clock_features_used_for": "white_win_after_10_only",
             "history_features_used_for": "elo_regression_only",
+            "identity_features_used_for": [],
+            "causal_player_history_features": True,
+            "history_features_computed_before_current_game_update": True,
+            "clock_features_limited_to_allowed_plies": True,
+            "current_elo_excluded_from_elo_features": True,
+            "bayesian_history_smoothing": USE_HISTORY_BAYESIAN_SMOOTHING,
+            "history_virtual_games": HISTORY_BAYESIAN_VIRTUAL_GAMES if USE_HISTORY_BAYESIAN_SMOOTHING else 0.0,
+            "time_pressure_features": True,
+            "stream_retry_resume": True,
+        }
+    elif args.model_profile == "report_best":
+        feature_notes = {
+            "model_profile": "report_best",
+            "selected_from_experiment_outputs_and_report_best_100k": True,
+            "t2_selected_from_experiment_outputs": "F2_LogReg_C0.5_after3_enhanced_clock_no_stockfish",
+            "portable_best_without_stockfish": True,
+            "overall_stockfish_best_kept_as_research_reference": True,
+            "white_win_before": "logistic_regression_C1.0_with_causal_history",
+            "white_win_after_3": "logistic_regression_C0.5_after3_enhanced_clock_no_stockfish",
+            "white_win_after_10": "sklearn_hist_gradient_boosting_after10_enhanced_clock_no_stockfish",
+            "elo_after_10": "sklearn_random_forest_elo_enhanced_history_no_stockfish",
+            "stockfish_or_deep_learning_used": False,
+            "heavy_dependencies_added": False,
+            "lightweight_enhanced_board_features_selected": True,
+            "clock_features_used_for": ["white_win_after_3", "white_win_after_10"],
+            "history_features_used_for": ["white_win_before", "elo_regression"],
             "identity_features_used_for": [],
             "causal_player_history_features": True,
             "history_features_computed_before_current_game_update": True,

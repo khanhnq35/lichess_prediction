@@ -6,7 +6,7 @@ This folder contains the final organized submission materials for the Lichess Bl
 
 - `Solution.py`: reproducible Python pipeline.
 - `requirements.txt`: strict lightweight dependencies.
-- `requirements-experiments.txt`: optional LightGBM/XGBoost dependencies for the best no-Stockfish profile.
+- `requirements-experiments.txt`: optional LightGBM/XGBoost dependencies for legacy comparison experiments.
 - `Results/`: final full 100k metrics and validation predictions.
 - `Results/xai/`: generated calibration, lift, Elo error, and prediction-example analysis.
 - `Results/xai/generate_xai_report.py`: reproducible output-level XAI helper.
@@ -23,18 +23,17 @@ This folder contains the final organized submission materials for the Lichess Bl
 
 ```bash
 pip install -r requirements.txt
-python Solution.py --target-games 100000 --output-dir outputs_lightweight
+python Solution.py --target-games 100000 --output-dir outputs_lightweight --model-profile lightweight
 ```
 
-## Run Final Boosting Profile
+## Run Final Report-Best Profile
 
 ```bash
 pip install -r requirements.txt
-pip install -r requirements-experiments.txt
-python Solution.py --target-games 100000 --output-dir outputs_full --model-profile boosting
+python Solution.py --target-games 100000 --output-dir outputs_full --model-profile report_best
 ```
 
-The boosting profile is the reported best no-Stockfish configuration.
+The `report_best` profile is the final portable no-Stockfish configuration. It uses sklearn Logistic Regression, HistGradientBoosting, and RandomForest models selected after reviewing the 100k experiments. The older `boosting` profile remains available for optional LightGBM/XGBoost comparisons.
 
 ## Regenerate XAI Outputs
 

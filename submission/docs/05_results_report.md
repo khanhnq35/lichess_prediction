@@ -4,10 +4,10 @@
 
 This report summarizes the final validation results of the Lichess Blitz prediction pipeline.
 
-The final reported run uses the **no-Stockfish boosting profile**:
+The final reported run uses the **portable no-Stockfish `report_best` profile**:
 
 ```bash
-python solution.py --target-games 100000 --output-dir outputs_solution_improvements_100k_final --model-profile boosting
+python solution.py --target-games 100000 --output-dir outputs_full --model-profile report_best
 ```
 
 The pipeline was evaluated on the first `100,000` eligible Blitz games from the selected monthly Lichess archive. The split is chronological:
@@ -23,10 +23,10 @@ The final model configuration is:
 
 | Task                          | Selected model       | Main feature groups                                                     |
 | ----------------------------- | -------------------- | ----------------------------------------------------------------------- |
-| White win before game         | Logistic Regression  | Pre-game Elo and time-control features                                  |
-| White win after 3 full moves  | Conservative XGBoost | Pre-game, after-3 board, move behavior, enhanced board features         |
-| White win after 10 full moves | Balanced XGBoost     | Pre-game, after-10 board, move behavior, enhanced board, clock features |
-| Elo after 10 full moves       | Balanced LightGBM    | Time-control, causal history, after-10 board, enhanced board features   |
+| White win before game         | Logistic Regression + causal history | Pre-game Elo, time-control, causal history                  |
+| White win after 3 full moves  | LogisticRegression(C=0.5) | Pre-game, after-3 board, move behavior, enhanced board, first-6-ply clock features |
+| White win after 10 full moves | sklearn HistGradientBoostingClassifier | Pre-game, after-10 board, move behavior, enhanced board, clock features |
+| Elo after 10 full moves       | sklearn RandomForestRegressor | Time-control, causal history, after-10 board, enhanced board features |
 
 The final results show three important findings:
 
@@ -36,6 +36,17 @@ The final results show three important findings:
 
 3. **Elo prediction is very strong in the same-month chronological stream.** The model reduces Elo MAE from around `300` points under the mean baseline to around `29` points, mainly because causal player history is highly informative.
 
+The headline metrics should always be read against baselines:
+
+| Task | Final model | Baseline | Main takeaway |
+| --- | ---: | ---: | --- |
+| White win before game | ROC-AUC `0.579185` | Elo expected-score ROC-AUC `0.578497` | Pre-game prediction is essentially Elo-driven. |
+| White win after 3 full moves | ROC-AUC `0.579614` | Elo expected-score ROC-AUC `0.578497` | First 6 plies add little extra signal and should not be overclaimed. |
+| White win after 10 full moves | ROC-AUC `0.621742` | Elo expected-score ROC-AUC `0.578497` | First 20 plies plus clock/board features add meaningful signal. |
+| Elo after 10 full moves | White/Black MAE `28.719 / 28.935` | Mean baseline MAE `300.224 / 300.586` | Causal same-stream player history makes rating reconstruction much stronger than a global mean baseline. |
+
+The low Elo MAE is not a leakage claim and should not be interpreted as pure cold-start rating inference. The Elo model is best understood as **same-stream rating reconstruction**: it uses causal player-history features computed from earlier eligible games before the current game is processed. This is valid because current Elo, rating diff, result, future games, and validation fitting are excluded from the Elo model inputs.
+
 ---
 
 ## 2. Dataset and Run Summary
@@ -44,7 +55,7 @@ The final run used the public Lichess standard rated monthly archive for `2023-1
 
 | Item                     |            Value |
 | ------------------------ | ---------------: |
-| Runtime                  | `645.82 seconds` |
+| Runtime                  | `769.13 seconds` |
 | Selected month           |        `2023-11` |
 | Time-control             |          `Blitz` |
 | Parsed games             |        `213,463` |
@@ -109,27 +120,35 @@ Final classification results:
 
 | Model                         |    ROC-AUC |   Log loss | Brier score |   Accuracy |
 | ----------------------------- | ---------: | ---------: | ----------: | ---------: |
-| White win before game         | `0.578805` | `0.678818` |  `0.243280` | `0.552550` |
-| White win after 3 full moves  | `0.578667` | `0.679298` |  `0.243440` | `0.550400` |
-| White win after 10 full moves | `0.622593` | `0.663965` |  `0.236364` | `0.579900` |
+| White win before game         | `0.579185` | `0.678708` |  `0.243225` | `0.552200` |
+| White win after 3 full moves  | `0.579614` | `0.678700` |  `0.243145` | `0.555150` |
+| White win after 10 full moves | `0.621742` | `0.665223` |  `0.236834` | `0.583950` |
 | Elo expected-score baseline   | `0.578497` | `0.680803` |  `0.243974` |        n/a |
 | Majority baseline             |        n/a |        n/a |         n/a | `0.503600` |
 
-The after-10 model is the strongest White-win classifier. It improves both ranking quality and probability quality.
+The after-10 model is the strongest White-win classifier. It improves both ranking quality and probability quality against the main Elo expected-score baseline.
+
+The Elo expected-score baseline is:
+
+```text
+p_white = 1 / (1 + 10 ** (-(WhiteElo - BlackElo) / 400))
+```
+
+This is the right baseline for White-win prediction because Elo ratings are known before the game. It is not identical to the binary target because Elo expected score treats draws as half-points, while this project treats draws as non-White-wins. Even so, it is a strong and useful benchmark.
 
 Compared with the Elo expected-score baseline:
 
 ```text
-ROC-AUC improvement = 0.622593 - 0.578497 = 0.044096
-Log-loss improvement = 0.680803 - 0.663965 = 0.016838
-Brier improvement = 0.243974 - 0.236364 = 0.007610
+ROC-AUC improvement = 0.621742 - 0.578497 = 0.043245
+Log-loss improvement = 0.680803 - 0.665223 = 0.015580
+Brier improvement = 0.243974 - 0.236834 = 0.007140
 ```
 
 Compared with the before-game model:
 
 ```text
-ROC-AUC improvement = 0.622593 - 0.578805 = 0.043788
-Accuracy improvement = 0.579900 - 0.552550 = 0.027350
+ROC-AUC improvement = 0.621742 - 0.579185 = 0.042557
+Accuracy improvement = 0.583950 - 0.552200 = 0.031750
 ```
 
 This shows that the first 10 full moves contain useful predictive information beyond pre-game Elo.
@@ -144,16 +163,16 @@ The before-game model reaches:
 
 | Metric      |      Value |
 | ----------- | ---------: |
-| ROC-AUC     | `0.578805` |
-| Log loss    | `0.678818` |
-| Brier score | `0.243280` |
-| Accuracy    | `0.552550` |
+| ROC-AUC     | `0.579185` |
+| Log loss    | `0.678708` |
+| Brier score | `0.243225` |
+| Accuracy    | `0.552200` |
 
 This performance is very close to the Elo expected-score baseline:
 
 | Model                 |    ROC-AUC |   Log loss |      Brier |
 | --------------------- | ---------: | ---------: | ---------: |
-| Before-game model     | `0.578805` | `0.678818` | `0.243280` |
+| Before-game model     | `0.579185` | `0.678708` | `0.243225` |
 | Elo expected baseline | `0.578497` | `0.680803` | `0.243974` |
 
 This is expected. Before the game starts, the strongest available information is the rating difference between players. The learned model mainly acts as a calibrated version of Elo-derived information.
@@ -172,12 +191,12 @@ The after-3 model reaches:
 
 | Metric      |      Value |
 | ----------- | ---------: |
-| ROC-AUC     | `0.578667` |
-| Log loss    | `0.679298` |
-| Brier score | `0.243440` |
-| Accuracy    | `0.550400` |
+| ROC-AUC     | `0.579614` |
+| Log loss    | `0.678700` |
+| Brier score | `0.243145` |
+| Accuracy    | `0.555150` |
 
-This is almost the same as the before-game model. That should not be interpreted as a failure.
+This is almost the same as the before-game model and only slightly above the Elo expected-score ROC-AUC baseline. That should not be overclaimed; it means the first 6 plies add only weak non-engine signal beyond rating information for this model profile.
 
 After 3 full moves, only 6 plies have been played. Most games are still in common opening structures, and many decisive events have not happened yet. At this point:
 
@@ -187,7 +206,7 @@ After 3 full moves, only 6 plies have been played. Most games are still in commo
 * future blunders are not observable,
 * and many opening choices transpose into similar positions.
 
-The after-3 model adds early board-state information, but the signal is still weak. It is useful as a stable early-game baseline, but it is not expected to be dramatically stronger than a pre-game Elo model.
+The after-3 model adds early board-state and first-6-ply clock information, but the signal is still weak. It is useful as an early-game diagnostic model, but it is not expected to be dramatically stronger than a pre-game Elo model.
 
 The practical interpretation is:
 
@@ -203,10 +222,10 @@ The after-10 model is the strongest White-win classifier:
 
 | Metric      |      Value |
 | ----------- | ---------: |
-| ROC-AUC     | `0.622593` |
-| Log loss    | `0.663965` |
-| Brier score | `0.236364` |
-| Accuracy    | `0.579900` |
+| ROC-AUC     | `0.621742` |
+| Log loss    | `0.665223` |
+| Brier score | `0.236834` |
+| Accuracy    | `0.583950` |
 
 This is the first prediction horizon where the model gains clear signal beyond Elo.
 
@@ -224,8 +243,8 @@ The improvement is visible across multiple metrics, not just one:
 
 | Comparison               | ROC-AUC gain | Log-loss gain |  Brier gain |
 | ------------------------ | -----------: | ------------: | ----------: |
-| After-10 vs Elo baseline |  `+0.044096` |   `+0.016838` | `+0.007610` |
-| After-10 vs before-game  |  `+0.043788` |   `+0.014853` | `+0.006916` |
+| After-10 vs Elo baseline |  `+0.043245` |   `+0.015580` | `+0.007140` |
+| After-10 vs before-game  |  `+0.042557` |   `+0.014853` | `+0.006916` |
 
 This matters because:
 
@@ -237,6 +256,8 @@ The practical interpretation is:
 
 > By move 10, the model has learned meaningful early-game signals beyond pre-game Elo, especially from board state and clock behavior.
 
+This is the key classification result: after-10 prediction is not merely reproducing Elo. It improves the Elo expected-score baseline by `+0.043245` ROC-AUC and also improves log loss and Brier score.
+
 ---
 
 ## 6. Probability Diagnostics
@@ -245,18 +266,18 @@ Probability diagnostics help check whether the models produce sensible probabili
 
 | Model        |        Min |       Mean |        Std |        P05 |        P50 |        P95 |        Max |
 | ------------ | ---------: | ---------: | ---------: | ---------: | ---------: | ---------: | ---------: |
-| Before       | `0.006768` | `0.494281` | `0.082319` | `0.381639` | `0.493323` | `0.610892` | `0.985685` |
-| After 3      | `0.089187` | `0.494518` | `0.081155` | `0.372182` | `0.499331` | `0.609788` | `0.930361` |
-| After 10     | `0.016998` | `0.493487` | `0.120015` | `0.301606` | `0.492592` | `0.695086` | `0.981532` |
+| Before       | `0.006219` | `0.494660` | `0.083084` | `0.382329` | `0.493952` | `0.611631` | `0.986186` |
+| After 3      | `0.002040` | `0.494366` | `0.086476` | `0.373407` | `0.493711` | `0.619123` | `0.999324` |
+| After 10     | `0.035544` | `0.493420` | `0.114195` | `0.310773` | `0.494405` | `0.685055` | `0.955196` |
 | Elo baseline | `0.000855` | `0.500040` | `0.106923` | `0.341521` | `0.500000` | `0.660999` | `0.997727` |
 
 The mean predicted probabilities are close to the validation positive rate:
 
 ```text
 Validation positive rate = 0.496400
-Before mean probability  = 0.494281
-After-3 mean probability = 0.494518
-After-10 mean probability = 0.493487
+Before mean probability  = 0.494660
+After-3 mean probability = 0.494366
+After-10 mean probability = 0.493420
 ```
 
 This suggests there is no obvious global class-balance bias.
@@ -264,9 +285,9 @@ This suggests there is no obvious global class-balance bias.
 The after-10 model has a larger probability spread:
 
 ```text
-Before std  = 0.082319
-After-3 std = 0.081155
-After-10 std = 0.120015
+Before std  = 0.083084
+After-3 std = 0.086476
+After-10 std = 0.114195
 ```
 
 This is desirable. It means the after-10 model is more willing to separate high-probability and low-probability games after observing more information. The spread is not just noise: it is supported by better ROC-AUC, better log loss, better Brier score, and strong lift analysis.
@@ -346,14 +367,14 @@ Elo regression is the strongest quantitative result in the project.
 
 | Model         | White MAE | White RMSE |    White R² | Black MAE | Black RMSE |    Black R² |
 | ------------- | --------: | ---------: | ----------: | --------: | ---------: | ----------: |
-| Elo after 10  |  `29.241` |   `82.072` |  `0.950259` |  `29.376` |   `82.509` |  `0.949865` |
+| Elo after 10  |  `28.719` |   `83.351` |  `0.948696` |  `28.935` |   `84.081` |  `0.947937` |
 | Mean baseline | `300.224` |  `368.031` | `-0.000222` | `300.586` |  `368.529` | `-0.000195` |
 
 Compared with the mean baseline:
 
 ```text
-White MAE reduction = 300.224 - 29.241 = 270.983
-Black MAE reduction = 300.586 - 29.376 = 271.210
+White MAE reduction = 300.224 - 28.719 = 270.983
+Black MAE reduction = 300.586 - 28.935 = 271.210
 ```
 
 Relative reduction:
@@ -365,18 +386,26 @@ Black MAE reduction rate ≈ 90.23%
 
 This is a large improvement.
 
-However, the result should not be interpreted as “the model can always infer a player’s Elo from only 10 moves.” The model uses causal player-history features. If a player has appeared earlier in the monthly chronological stream, their earlier games provide strong information about their current rating.
+## 9.1 Why the Elo MAE is Low Without Leakage
+
+The result should not be interpreted as “the model can always infer a player’s Elo from only 10 moves.” The model uses causal player-history features. If a player has appeared earlier in the monthly chronological stream, their earlier games provide strong information about their current rating.
+
+This makes the task closer to **same-stream rating reconstruction** than pure cold-start Elo estimation. In the validation period, many players have prior appearances in the earlier chronological stream. For those players, features such as prior observed Elo, prior opponent strength, prior game count, and recent score rate are strong rating anchors.
 
 This is valid under the project’s leakage rules because:
 
 1. history is computed before the current game,
 2. only earlier eligible games are used,
 3. validation rows are not used for fitting,
-4. current-game Elo is excluded from Elo input features.
+4. current-game Elo is excluded from Elo input features,
+5. `elo_diff`, `mean_elo`, rating-diff fields, result, termination, total game length, and future moves are excluded,
+6. player histories are updated only after current-game features are extracted.
 
 The practical interpretation is:
 
-> The Elo model is highly effective for same-stream rating reconstruction when players have causal prior history. It is less reliable for pure cold-start players with no history.
+> The Elo model should be interpreted as a same-stream rating reconstruction model rather than a pure cold-start Elo estimator. Its strongest signal comes from causal player history and repeat-player structure. This is leakage-safe because the history is computed only from earlier games, but the headline MAE is most reliable when the validation/test stream has similar player-overlap patterns.
+
+This distinction is important. A reviewer should not read MAE `29` as evidence that the model can estimate an arbitrary unseen player's rating from the first 10 moves alone. It means the pipeline can reconstruct ratings very accurately in a chronological Lichess stream where prior player observations are available causally.
 
 ---
 
@@ -518,8 +547,8 @@ It can answer:
 The answer is yes, with strong validation performance:
 
 ```text
-White MAE = 29.241
-Black MAE = 29.376
+White MAE = 28.719
+Black MAE = 28.935
 ```
 
 However, the model’s value depends on the data setting.
@@ -554,7 +583,7 @@ Therefore, the correct interpretation is:
 
 This submission uses output-level XAI and diagnostic analysis rather than SHAP-level model introspection.
 
-The reason is practical: the final boosting pipeline is designed for reproducible execution and does not require saving heavy model artifacts. Instead, explainability is provided through:
+The reason is practical: the final `report_best` pipeline is designed for reproducible execution and does not require saving heavy model artifacts. Instead, explainability is provided through:
 
 * calibration bins,
 * lift analysis,
@@ -648,7 +677,7 @@ The Elo model’s headline MAE is very strong, but the result is partly driven b
 
 This is valid under the project setup, but the result should be reported carefully:
 
-> The model is best interpreted as a same-stream Elo reconstruction model, not a pure cold-start rating estimator.
+> The model is best interpreted as a same-stream Elo reconstruction model, not a pure cold-start rating estimator. Its low MAE is leakage-safe because history features are computed only from earlier games, but the metric depends on similar repeat-player/history overlap in validation.
 
 ### 16.4 No Stockfish in Final Profile
 
@@ -663,9 +692,9 @@ The final pipeline achieves a strong balance between predictive performance, rep
 The most important result is the after-10 White-win model:
 
 ```text
-After-10 ROC-AUC = 0.622593
+After-10 ROC-AUC = 0.621742
 Elo baseline ROC-AUC = 0.578497
-Improvement = +0.044096
+Improvement = +0.043245
 ```
 
 This shows that early board state and clock information add meaningful predictive signal beyond pre-game Elo.
@@ -673,20 +702,23 @@ This shows that early board state and clock information add meaningful predictiv
 The second major result is Elo prediction:
 
 ```text
-White MAE = 29.241
-Black MAE = 29.376
+White MAE = 28.719
+Black MAE = 28.935
 Mean baseline MAE ≈ 300
 ```
 
 This shows that causal player history and early-game features can reconstruct ratings well in a same-month chronological stream.
 
-Overall, the selected no-Stockfish boosting profile is a defensible final solution because it:
+The Elo result should be reported with its baseline and caveat together: the model improves dramatically over the mean Elo baseline, but the improvement comes primarily from causal repeat-player history rather than from inferring skill solely from 20 plies of chess moves.
 
-* beats simple baselines,
+Overall, the selected no-Stockfish `report_best` profile is a defensible final solution because it:
+
+* keeps after-10 prediction clearly above the Elo expected-score baseline,
 * improves after-10 prediction meaningfully,
 * produces useful probability ranking and lift,
 * predicts Elo accurately under the chronological setup,
 * avoids Stockfish dependency,
+* avoids mandatory LightGBM/XGBoost dependencies in the final submitted profile,
 * and remains leakage-safe and reproducible.
 
 The final results are not engine-level chess predictions, but they are strong and practically meaningful for a reproducible quantitative ML assessment.

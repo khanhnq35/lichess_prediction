@@ -11,18 +11,18 @@ The assessment contains four prediction tasks:
 3. Predict the probability that White wins after 10 full moves.
 4. Predict both players' Elo ratings after 10 full moves.
 
-The final selected profile is a **no-Stockfish boosting profile**. It uses stronger tabular models than the strict lightweight baseline, but it does not require an external chess engine. This provides a good trade-off between empirical performance and reproducible execution.
+The final selected profile is a **portable no-Stockfish `report_best` profile**. It uses stronger sklearn tabular models than the strict lightweight baseline, but it does not require Stockfish, LightGBM, or XGBoost. This provides a good trade-off between empirical performance, reproducibility, leakage safety, and submission portability.
 
 Final selected submission profile:
 
 | Task                        | Final selected model | Feature profile                                  | Main validation metric |
 | --------------------------- | -------------------- | ------------------------------------------------ | ---------------------: |
-| T1 White win before game    | Logistic Regression  | Pre-game features                                |       ROC-AUC `0.5788` |
-| T2 White win after 3 moves  | Conservative XGBoost | After-3 enhanced features, no Stockfish          |       ROC-AUC `0.5787` |
-| T3 White win after 10 moves | Balanced XGBoost     | After-10 enhanced + clock features, no Stockfish |       ROC-AUC `0.6226` |
-| T4 Elo after 10 moves       | Balanced LightGBM    | Elo-safe enhanced + causal history features      |        Avg MAE `29.31` |
+| T1 White win before game    | Logistic Regression + causal history | Pre-game + causal history features |       ROC-AUC `0.5792` |
+| T2 White win after 3 moves  | LogisticRegression(C=0.5) | After-3 enhanced + clock features, no Stockfish |       ROC-AUC `0.5796` |
+| T3 White win after 10 moves | sklearn HistGradientBoostingClassifier | After-10 enhanced + clock features, no Stockfish |       ROC-AUC `0.6217` |
+| T4 Elo after 10 moves       | sklearn RandomForestRegressor | Elo-safe enhanced + causal history features |        Avg MAE `28.83` |
 
-The strongest exploratory after-10 classifier used Stockfish and reached ROC-AUC around `0.6483`. However, Stockfish was not selected for the final default submission because it requires an external engine or cached engine evaluations, which makes the pipeline less portable.
+The strongest exploratory after-10 classifier used Stockfish and reached ROC-AUC around `0.6483`. However, Stockfish was not selected for the final default submission because it requires an external engine or cached engine evaluations, which makes the pipeline less portable. The older LightGBM/XGBoost no-Stockfish profile remains useful as a comparison profile, but the final submitted `Solution.py` defaults to `report_best` for a dependency-light sklearn implementation.
 
 The final selected solution prioritizes:
 
@@ -397,7 +397,7 @@ Ensembles did not justify their added complexity.
 Key observations:
 
 * Voting and stacking did not beat the best tuned after-10 classifier.
-* Voting regression was strong but did not justify the additional complexity over the final LightGBM profile.
+* Voting regression was strong but did not justify the additional complexity over a single final regressor.
 * Stacking makes leakage control and documentation more complicated.
 * Therefore, ensembles were excluded from the final selected pipeline.
 
@@ -443,7 +443,7 @@ Conclusion: Logistic Regression remains the best T1 model. Pre-game prediction i
 | `lightgbm_balanced_after3_enhanced`     | LightGBM           | After-3 enhanced   | `0.5669` | `0.6827` | `0.2451` | `0.5433` |
 | `xgboost_balanced_after3_enhanced`      | XGBoost            | After-3 enhanced   | `0.5714` | `0.6811` | `0.2443` | `0.5461` |
 
-Conclusion: Conservative XGBoost is selected for T2. It improves over the earlier production logistic model and remains portable because it does not require Stockfish.
+Conclusion: Within the LightGBM/XGBoost no-Stockfish experiment, Conservative XGBoost was the strongest T2 candidate. It remains useful as a comparison profile, but it was not chosen as the final submitted default because the final `report_best` profile prioritizes sklearn-only portability.
 
 ---
 
@@ -457,7 +457,7 @@ Conclusion: Conservative XGBoost is selected for T2. It improves over the earlie
 | `xgboost_conservative_after10_enhanced_clock`  | XGBoost            | After-10 enhanced + clock | `0.6202` | `0.6660` | `0.2371` | `0.5796` |
 | `xgboost_balanced_after10_enhanced_clock`      | XGBoost            | After-10 enhanced + clock | `0.6219` | `0.6642` | `0.2364` | `0.5803` |
 
-Conclusion: Balanced XGBoost is selected for T3. It gives the best no-Stockfish after-10 ROC-AUC and improves log loss and Brier score compared with the logistic model.
+Conclusion: Within the LightGBM/XGBoost no-Stockfish experiment, Balanced XGBoost gave the best after-10 ROC-AUC. The final `report_best` profile uses sklearn HistGradientBoosting instead, trading a very small metric difference for fewer optional dependencies.
 
 ---
 
@@ -471,7 +471,7 @@ Conclusion: Balanced XGBoost is selected for T3. It gives the best no-Stockfish 
 | `xgboost_conservative_elo_enhanced_history`  | XGBoost   | Elo enhanced + history |   `36.99` |   `37.85` | `37.42` | `0.9397` | `0.9378` |
 | `xgboost_balanced_elo_enhanced_history`      | XGBoost   | Elo enhanced + history |   `30.82` |   `31.00` | `30.91` | `0.9489` | `0.9483` |
 
-Conclusion: Balanced LightGBM is selected for T4. It dramatically improves over Ridge while remaining no-Stockfish. The result should still be interpreted with a repeat-player caveat because causal player history is highly predictive in same-month chronological validation.
+Conclusion: Balanced LightGBM dramatically improved over Ridge in this experiment. Later report-best experiments showed RandomForest was the stronger portable Elo regressor, so the final `report_best` profile uses RandomForest instead.
 
 ---
 
@@ -534,7 +534,7 @@ The strongest exploratory models were:
 | T4 Elo      | RandomForest + Stockfish         |  Avg MAE `28.02` |
 | T4 Elo      | RandomForest no Stockfish        |  Avg MAE `28.05` |
 
-This phase shows the upper-bound performance available with Stockfish and heavier model choices. The final submission intentionally avoids requiring Stockfish because the no-Stockfish boosting profile gives strong results while remaining more portable.
+This phase shows the upper-bound performance available with Stockfish and heavier model choices. The final submission intentionally avoids requiring Stockfish because the no-Stockfish `report_best` profile gives strong results while remaining more portable.
 
 ---
 
@@ -543,14 +543,14 @@ This phase shows the upper-bound performance available with Stockfish and heavie
 The final production-style run was:
 
 ```bash
-python solution.py --target-games 100000 --output-dir outputs_solution_improvements_100k_final --model-profile boosting
+python solution.py --target-games 100000 --output-dir outputs_full --model-profile report_best
 ```
 
 ### Dataset Summary
 
 | Item                     |      Value |
 | ------------------------ | ---------: |
-| Runtime                  |  `645.82s` |
+| Runtime                  |  `769.13s` |
 | Month                    |  `2023-11` |
 | Time-control             |    `Blitz` |
 | Parsed games             |  `213,463` |
@@ -565,9 +565,9 @@ python solution.py --target-games 100000 --output-dir outputs_solution_improveme
 
 | Task                  |    ROC-AUC |   Log loss |      Brier |   Accuracy |
 | --------------------- | ---------: | ---------: | ---------: | ---------: |
-| Before-game           | `0.578805` | `0.678818` | `0.243280` | `0.552550` |
-| After-3               | `0.578667` | `0.679298` | `0.243440` | `0.550400` |
-| After-10              | `0.622593` | `0.663965` | `0.236364` | `0.579900` |
+| Before-game           | `0.579185` | `0.678708` | `0.243225` | `0.552200` |
+| After-3               | `0.579614` | `0.678700` | `0.243145` | `0.555150` |
+| After-10              | `0.621742` | `0.665223` | `0.236834` | `0.583950` |
 | Elo expected baseline | `0.578497` | `0.680803` | `0.243974` |        n/a |
 | Majority baseline     |        n/a |        n/a |        n/a | `0.503600` |
 
@@ -575,7 +575,7 @@ python solution.py --target-games 100000 --output-dir outputs_solution_improveme
 
 | Model         | White MAE | Black MAE |          White R² |          Black R² |
 | ------------- | --------: | --------: | ----------------: | ----------------: |
-| Elo after-10  |  `29.241` |  `29.376` |        `0.950259` |        `0.949865` |
+| Elo after-10  |  `28.719` |  `28.935` |        `0.948696` |        `0.947937` |
 | Mean baseline | `300.224` | `300.586` | approximately `0` | approximately `0` |
 
 ### Interpretation
@@ -590,19 +590,19 @@ The final run shows strong performance:
 After-10 improvement over Elo baseline:
 
 ```text
-ROC-AUC improvement = 0.622593 - 0.578497 = 0.044096
-Log-loss improvement = 0.680803 - 0.663965 = 0.016838
-Brier improvement = 0.243974 - 0.236364 = 0.007610
+ROC-AUC improvement = 0.621742 - 0.578497 = 0.043245
+Log-loss improvement = 0.680803 - 0.665223 = 0.015580
+Brier improvement = 0.243974 - 0.236834 = 0.007140
 ```
 
 Elo improvement over mean baseline:
 
 ```text
-White MAE: 300.224 -> 29.241
-Black MAE: 300.586 -> 29.376
+White MAE: 300.224 -> 28.719
+Black MAE: 300.586 -> 28.935
 ```
 
-This validates the final no-Stockfish boosting profile as a strong and portable solution.
+This validates the final no-Stockfish `report_best` profile as a strong and portable solution. Compared with the earlier LightGBM/XGBoost no-Stockfish profile, it improves T1, T2, and Elo regression, while T3 remains very close. The final choice is therefore a trade-off: stronger T2/Elo and fewer optional dependencies, with Stockfish-heavy results retained as research upper bounds.
 
 ---
 
@@ -674,7 +674,8 @@ The tree-based Elo models are not necessarily leakage models. The leakage audit 
 | Candidate profile          | Performance          | Portability | Leakage safety              | Complexity  | Final decision          |
 | -------------------------- | -------------------- | ----------- | --------------------------- | ----------- | ----------------------- |
 | Strict lightweight sklearn | Medium               | Excellent   | Excellent                   | Low         | Keep as fallback        |
-| No-Stockfish boosting      | High                 | Good        | Good                        | Medium      | Final reported profile  |
+| No-Stockfish `report_best` | High                 | Excellent   | Good                        | Medium      | Final reported profile  |
+| LightGBM/XGBoost no-Stockfish | High              | Good        | Good                        | Medium      | Comparison profile      |
 | Stockfish-heavy            | Highest for after-10 | Weak        | Manageable but more complex | High        | Research reference only |
 | Deep learning              | Not selected         | Weak        | More complex                | High        | Exclude                 |
 | Ensembles / stacking       | Mixed                | Medium      | More delicate               | Medium/High | Exclude                 |
@@ -689,26 +690,25 @@ Pre-game outcome prediction is dominated by Elo. Logistic Regression is sufficie
 
 ### T2 After-3 White-Win Prediction
 
-After 3 moves, the game is still very early. Enhanced board features improve the model modestly. Conservative XGBoost is the best no-Stockfish option and is selected for the final profile.
+After 3 moves, the game is still very early. In `experiment/outputs/experiment_results.csv`, the best no-Stockfish T2 row is `LogReg(C=0.5)` with after-3 enhanced numeric features, reaching ROC-AUC `0.5797`; the best overall T2 row is `GradientBoosting+SF` with ROC-AUC `0.5832`. The final profile selects the no-Stockfish `LogisticRegression(C=0.5)` variant because it improves T2 without requiring a Stockfish engine or cache.
 
 ### T3 After-10 White-Win Prediction
 
-After 10 moves, board state and clock behavior become meaningfully predictive. Balanced XGBoost with enhanced and clock features is the best portable no-Stockfish option. Stockfish improves the metric further, but it is not selected because it requires an external engine or cache.
+After 10 moves, board state and clock behavior become meaningfully predictive. sklearn `HistGradientBoostingClassifier` is selected for the final portable profile. Stockfish improves the metric further, but it is not selected because it requires an external engine or cache.
 
 ### T4 Elo Prediction
 
-Elo prediction benefits heavily from causal player history and nonlinear boosting. Balanced LightGBM gives strong MAE around `29` Elo. This result is valid under the chronological validation protocol, but it should be interpreted with repeat-player sensitivity in mind.
+Elo prediction benefits heavily from causal player history and nonlinear tree models. sklearn `RandomForestRegressor` gives the best final portable result, with average MAE around `28.83` Elo. This result is valid under the chronological validation protocol, but it should be interpreted with repeat-player sensitivity in mind.
 
 ---
 
 ## 18. Final choose of model profile
 
-Use the no-Stockfish boosting profile as the final reported solution:
+Use the no-Stockfish `report_best` profile as the final reported solution:
 
 ```bash
 pip install -r requirements.txt
-pip install -r requirements-experiments.txt
-python solution.py --target-games 100000 --output-dir outputs_full --model-profile boosting
+python solution.py --target-games 100000 --output-dir outputs_full --model-profile report_best
 ```
 
 Keep the strict lightweight profile as a fallback:
@@ -720,8 +720,9 @@ python solution.py --target-games 100000 --output-dir outputs_lightweight --mode
 
 The final selected profile is recommended because it:
 
-* improves after-3 and after-10 White-win prediction over the earlier lightweight model,
+* keeps after-10 White-win prediction meaningfully above the Elo expected-score baseline,
 * improves Elo regression substantially over Ridge and the mean baseline,
 * does not require Stockfish,
+* does not require LightGBM/XGBoost for the final submitted profile,
 * keeps Stockfish-heavy models as research references only,
 * and provides a good balance between empirical performance and reproducible execution.

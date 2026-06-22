@@ -36,53 +36,61 @@
   },
   "feature_notes": {
     "bayesian_history_smoothing": false,
-    "boosting_dependencies_in": "requirements-experiments.txt",
     "causal_player_history_features": true,
     "clock_features_limited_to_allowed_plies": true,
-    "clock_features_used_for": "white_win_after_10_only",
+    "clock_features_used_for": [
+      "white_win_after_3",
+      "white_win_after_10"
+    ],
     "current_elo_excluded_from_elo_features": true,
-    "elo_after_10": "lightgbm_balanced_elo_enhanced_history",
+    "elo_after_10": "sklearn_random_forest_elo_enhanced_history_no_stockfish",
+    "heavy_dependencies_added": false,
     "history_features_computed_before_current_game_update": true,
-    "history_features_used_for": "elo_regression_only",
+    "history_features_used_for": [
+      "white_win_before",
+      "elo_regression"
+    ],
     "history_virtual_games": 0.0,
     "identity_features_used_for": [],
     "lightweight_enhanced_board_features_selected": true,
-    "model_profile": "boosting",
-    "normal_lightweight_requirements_changed": false,
-    "selected_from_boosting_no_stockfish_100k": true,
+    "model_profile": "report_best",
+    "overall_stockfish_best_kept_as_research_reference": true,
+    "portable_best_without_stockfish": true,
+    "selected_from_experiment_outputs_and_report_best_100k": true,
     "stockfish_or_deep_learning_used": false,
     "stream_retry_resume": true,
+    "t2_selected_from_experiment_outputs": "F2_LogReg_C0.5_after3_enhanced_clock_no_stockfish",
     "time_pressure_features": true,
-    "white_win_after_10": "xgboost_balanced_after10_enhanced_clock",
-    "white_win_after_3": "xgboost_conservative_after3_enhanced",
-    "white_win_before": "production_logreg_C1.0"
+    "white_win_after_10": "sklearn_hist_gradient_boosting_after10_enhanced_clock_no_stockfish",
+    "white_win_after_3": "logistic_regression_C0.5_after3_enhanced_clock_no_stockfish",
+    "white_win_before": "logistic_regression_C1.0_with_causal_history"
   },
   "models": {
     "elo_after_10_moves": {
-      "black_elo_mae": 29.376121312688525,
-      "black_elo_r2": 0.9498650151728336,
-      "black_elo_rmse": 82.50879623560698,
-      "white_elo_mae": 29.241472206302422,
-      "white_elo_r2": 0.9502587906326323,
-      "white_elo_rmse": 82.07181969562548
+      "black_elo_mae": 28.93472041666667,
+      "black_elo_r2": 0.9479365383930459,
+      "black_elo_rmse": 84.0807016469024,
+      "white_elo_mae": 28.718808166666665,
+      "white_elo_r2": 0.9486964108260139,
+      "white_elo_rmse": 83.35079898186505
     },
     "white_win_after_10_moves": {
-      "accuracy": 0.5799,
-      "brier_score": 0.2363639491534269,
-      "log_loss": 0.6639650454606226,
-      "roc_auc": 0.6225930002211315
+      "accuracy": 0.58395,
+      "brier_score": 0.23683429372931714,
+      "log_loss": 0.6652225370162315,
+      "roc_auc": 0.621742251118298
     },
     "white_win_after_3_moves": {
-      "accuracy": 0.5504,
-      "brier_score": 0.24343969005321997,
-      "log_loss": 0.6792983277056425,
-      "roc_auc": 0.5786666830808509
+      "accuracy": 0.55515,
+      "brier_score": 0.24314457590258717,
+      "log_loss": 0.6787001890618276,
+      "roc_auc": 0.579614437212425
     },
     "white_win_before_game": {
-      "accuracy": 0.55255,
-      "brier_score": 0.24328029057252734,
-      "log_loss": 0.6788176241366375,
-      "roc_auc": 0.5788052102621
+      "accuracy": 0.5522,
+      "brier_score": 0.2432253545067474,
+      "log_loss": 0.6787079883796354,
+      "roc_auc": 0.5791852049610252
     }
   },
   "probability_diagnostics": {
@@ -96,31 +104,31 @@
       "std": 0.10692318531619147
     },
     "white_win_after_10": {
-      "max": 0.9815316200256348,
-      "mean": 0.4934867451351136,
-      "min": 0.0169984120875597,
-      "p05": 0.3016057416796684,
-      "p50": 0.4925924986600876,
-      "p95": 0.6950855106115341,
-      "std": 0.12001513589486706
+      "max": 0.9551961365741345,
+      "mean": 0.49342043601670266,
+      "min": 0.03554442082538538,
+      "p05": 0.31077346121869887,
+      "p50": 0.49440541664246584,
+      "p95": 0.6850548391621141,
+      "std": 0.11419471020217774
     },
     "white_win_after_3": {
-      "max": 0.930361270904541,
-      "mean": 0.49451834489144386,
-      "min": 0.08918727934360504,
-      "p05": 0.37218222171068194,
-      "p50": 0.49933087825775146,
-      "p95": 0.6097878783941268,
-      "std": 0.08115527022108558
+      "max": 0.9993242052020018,
+      "mean": 0.4943656980128065,
+      "min": 0.002039712268011592,
+      "p05": 0.3734067234731817,
+      "p50": 0.49371114097236246,
+      "p95": 0.6191230618365308,
+      "std": 0.08647604393180308
     },
     "white_win_before": {
-      "max": 0.9856849556768067,
-      "mean": 0.4942808140094912,
-      "min": 0.006768462307338045,
-      "p05": 0.3816391316067495,
-      "p50": 0.49332276224849125,
-      "p95": 0.6108919251585057,
-      "std": 0.08231871003000564
+      "max": 0.9861859811213627,
+      "mean": 0.49465975467520945,
+      "min": 0.0062190766199506885,
+      "p05": 0.3823292544742578,
+      "p50": 0.4939519826580338,
+      "p95": 0.6116308123646814,
+      "std": 0.08308420644805992
     }
   },
   "run_config": {
@@ -139,10 +147,10 @@
       "2023-12"
     ],
     "hashing_features": 32768,
-    "model_profile": "boosting",
-    "output_dir": "outputs_solution_improvements_100k_final",
+    "model_profile": "report_best",
+    "output_dir": "submission/Results",
     "random_seed": 42,
-    "runtime_seconds": 645.8156629999867,
+    "runtime_seconds": 769.1300837079762,
     "selected_month": "2023-11",
     "target_games": 100000,
     "time_control": "Blitz",

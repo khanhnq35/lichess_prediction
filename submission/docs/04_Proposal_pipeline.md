@@ -6,17 +6,18 @@ The final submission pipeline is a reproducible end-to-end Python workflow for t
 
 The pipeline starts from the public Lichess monthly `.pgn.zst` archive, streams and decompresses the data without storing raw PGN files, parses games one by one, filters the first 100,000 eligible Blitz games, constructs leakage-safe features at the required prediction horizons, trains models on the first 80% of eligible games, validates on the last 20%, and writes metrics and prediction outputs.
 
-The solution supports two execution profiles:
+The solution supports three execution profiles:
 
 | Profile       | Purpose                                 | Dependency level                                    | Stockfish required |
 | ------------- | --------------------------------------- | --------------------------------------------------- | ------------------ |
 | `lightweight` | Strict fallback profile                 | `requirements.txt` only                             | No                 |
-| `boosting`    | Final selected high-performance profile | `requirements.txt` + `requirements-experiments.txt` | No                 |
+| `report_best` | Final selected portable high-performance profile | `requirements.txt` only                     | No                 |
+| `boosting`    | Legacy optional LightGBM/XGBoost comparison profile | `requirements.txt` + `requirements-experiments.txt` | No          |
 
-The final reported run uses the **no-Stockfish boosting profile**:
+The final reported run uses the **portable no-Stockfish `report_best` profile**:
 
 ```bash
-python solution.py --target-games 100000 --output-dir outputs_full --model-profile boosting
+python solution.py --target-games 100000 --output-dir outputs_full --model-profile report_best
 ```
 
 The strict fallback can be run with:
@@ -29,10 +30,10 @@ The final selected profile is:
 
 | Task                                      | Selected model       | Feature profile                                        |
 | ----------------------------------------- | -------------------- | ------------------------------------------------------ |
-| White-win probability before game         | Logistic Regression  | Pre-game Elo and time-control features                 |
-| White-win probability after 3 full moves  | Conservative XGBoost | After-3 enhanced board features, no Stockfish          |
-| White-win probability after 10 full moves | Balanced XGBoost     | After-10 enhanced board + clock features, no Stockfish |
-| Elo prediction after 10 full moves        | Balanced LightGBM    | Elo-safe enhanced features + causal player history     |
+| White-win probability before game         | Logistic Regression + causal history | Pre-game Elo, time-control, causal history |
+| White-win probability after 3 full moves  | LogisticRegression(C=0.5) | After-3 enhanced board + first-6-ply clock features, no Stockfish |
+| White-win probability after 10 full moves | sklearn HistGradientBoostingClassifier | After-10 enhanced board + clock features, no Stockfish |
+| Elo prediction after 10 full moves        | sklearn RandomForestRegressor | Elo-safe enhanced features + causal player history |
 
 This design gives strong validation performance while keeping the default final pipeline portable and independent of external chess engines.
 
@@ -84,7 +85,7 @@ Main arguments:
 | `--train-ratio`      | Chronological train ratio, default `0.80`      |
 | `--output-dir`       | Directory for metrics and predictions          |
 | `--hashing-features` | Number of hashing dimensions for text features |
-| `--model-profile`    | `lightweight` or `boosting`                    |
+| `--model-profile`    | `report_best`, `lightweight`, or `boosting`    |
 
 Default values:
 
@@ -336,7 +337,7 @@ For after-10 and Elo, these are counted only up to ply 20.
 
 ### 8.5 Enhanced Board Features
 
-The boosting profile uses additional lightweight positional features.
+The `report_best` and legacy `boosting` profiles use additional lightweight positional features.
 
 Examples:
 
@@ -379,7 +380,7 @@ Clock features include:
 * time-pressure flags,
 * time-used ratios.
 
-The final selected profile uses clock features for the after-10 White-win model because experiments showed clock information is more useful after 10 full moves than after 3 full moves.
+The final selected profile uses clock features for the after-3 and after-10 White-win models. For after-3, only clock comments observed within the first 6 plies are used. For after-10, only clock comments observed within the first 20 plies are used.
 
 ---
 
@@ -508,9 +509,9 @@ This profile is useful for quick checks and maximum portability.
 
 ---
 
-## 11.2 Boosting Profile
+## 11.2 Report-Best Profile
 
-The boosting profile is the final selected high-performance profile. It uses optional tabular boosting dependencies but does not use Stockfish.
+The `report_best` profile is the final selected high-performance profile. It uses only sklearn models and does not require Stockfish, LightGBM, or XGBoost.
 
 Final model routing:
 
@@ -522,10 +523,10 @@ flowchart TD
     SPLIT --> T3[Task 3: White win after 10]
     SPLIT --> T4[Task 4: Elo after 10]
 
-    T1 --> M1[Logistic Regression]
-    T2 --> M2[Conservative XGBoost Classifier]
-    T3 --> M3[Balanced XGBoost Classifier]
-    T4 --> M4[Balanced LightGBM Regressor]
+    T1 --> M1[Logistic Regression + causal history]
+    T2 --> M2[LogisticRegression(C=0.5) Classifier]
+    T3 --> M3[sklearn HistGradientBoosting Classifier]
+    T4 --> M4[sklearn RandomForest Regressor]
 
     M1 --> O1[p_white_win_before]
     M2 --> O2[p_white_win_after_3]
@@ -533,14 +534,14 @@ flowchart TD
     M4 --> O4[white_elo_pred_after_10 and black_elo_pred_after_10]
 ```
 
-Final boosting profile:
+Final `report_best` profile:
 
 | Task               | Selected model       | Feature groups                                             |
 | ------------------ | -------------------- | ---------------------------------------------------------- |
-| White win before   | Logistic Regression  | Pre-game Elo and time-control                              |
-| White win after 3  | Conservative XGBoost | Pre-game + after-3 enhanced board features                 |
-| White win after 10 | Balanced XGBoost     | Pre-game + after-10 enhanced board + clock features        |
-| Elo after 10       | Balanced LightGBM    | Time-control + causal history + after-10 enhanced features |
+| White win before   | Logistic Regression + causal history | Pre-game Elo, time-control, causal history |
+| White win after 3  | LogisticRegression(C=0.5) | Pre-game + after-3 enhanced board + first-6-ply clock features |
+| White win after 10 | sklearn HistGradientBoostingClassifier | Pre-game + after-10 enhanced board + clock features |
+| Elo after 10       | sklearn RandomForestRegressor | Time-control + causal history + after-10 enhanced features |
 
 No Stockfish features are required in this selected final profile.
 
@@ -562,23 +563,27 @@ Therefore, Logistic Regression was selected because it is:
 * easy to explain,
 * and competitive with more complex models.
 
-### 12.2 T2: Conservative XGBoost for After-3 Prediction
+### 12.2 T2: Logistic Regression C=0.5 for After-3 Prediction
 
 After 3 full moves, the game is still early and the signal is limited. Enhanced board features improve the model modestly.
 
-Conservative XGBoost was selected because it improves over the earlier lightweight production model while avoiding Stockfish dependency.
+`LogisticRegression(C=0.5)` was selected from `experiment/outputs/experiment_results.csv` as the best no-Stockfish after-3 configuration. It uses pre-game features, after-3 board and move-behavior features, enhanced board features, and clock features limited to the first 6 plies.
 
-### 12.3 T3: Balanced XGBoost for After-10 Prediction
+The strongest overall T2 experiment was `GradientBoosting+SF`, but it requires Stockfish evaluation features. That variant is kept as an experimental upper bound rather than the final default submission path.
+
+The final after-3 result remains close to the Elo expected-score baseline. This is expected because six plies are often not enough to reveal durable non-engine outcome signal.
+
+### 12.3 T3: HistGradientBoosting for After-10 Prediction
 
 After 10 full moves, the board and clock state contain meaningful predictive information.
 
-Balanced XGBoost was selected because it gave the best no-Stockfish after-10 performance. It improves both ROC-AUC and probability quality compared with the Elo expected-score baseline and earlier logistic models.
+sklearn `HistGradientBoostingClassifier` was selected because the broader 100k experiments showed that histogram/gradient-boosted tree models are among the strongest no-Stockfish options after 10 moves. The Stockfish variants score higher, but they are treated as upper-bound research experiments rather than the default submission pipeline.
 
-### 12.4 T4: Balanced LightGBM for Elo Prediction
+### 12.4 T4: RandomForest for Elo Prediction
 
 Elo prediction benefits heavily from causal player history and nonlinear interactions.
 
-Balanced LightGBM was selected because it gives strong Elo MAE while remaining no-Stockfish.
+sklearn `RandomForestRegressor` was selected because the 100k experiments showed it was the strongest portable no-Stockfish Elo regressor among the tested models. In the final run it improved over the previous LightGBM profile while still excluding current-game Elo from input features.
 
 The main caveat is that Elo prediction is repeat-player-sensitive. The model is leakage-safe under the chronological setup, but its strongest performance comes from causal same-month history and player-overlap patterns.
 
@@ -593,7 +598,7 @@ However, Stockfish is not required in the final selected pipeline because:
 * it needs an external engine binary or precomputed cache,
 * it makes reproduction more fragile,
 * it increases setup burden for the evaluator,
-* it is not necessary for the final no-Stockfish boosting profile,
+* it is not necessary for the final no-Stockfish `report_best` profile,
 * and it barely improves Elo prediction compared with causal history.
 
 The final pipeline therefore keeps Stockfish as a research reference, not as a default dependency.
@@ -621,14 +626,14 @@ The selected pipeline uses strong single-task models instead of an ensemble.
 The final production-style run used:
 
 ```bash
-python solution.py --target-games 100000 --output-dir outputs_solution_improvements_100k_final --model-profile boosting
+python solution.py --target-games 100000 --output-dir outputs_full --model-profile report_best
 ```
 
 Dataset summary:
 
 | Item                     |      Value |
 | ------------------------ | ---------: |
-| Runtime                  |  `645.82s` |
+| Runtime                  |  `769.13s` |
 | Month                    |  `2023-11` |
 | Time-control             |    `Blitz` |
 | Parsed games             |  `213,463` |
@@ -643,9 +648,9 @@ Classification metrics:
 
 | Task                  |    ROC-AUC |   Log loss |      Brier |   Accuracy |
 | --------------------- | ---------: | ---------: | ---------: | ---------: |
-| Before-game           | `0.578805` | `0.678818` | `0.243280` | `0.552550` |
-| After-3               | `0.578667` | `0.679298` | `0.243440` | `0.550400` |
-| After-10              | `0.622593` | `0.663965` | `0.236364` | `0.579900` |
+| Before-game           | `0.579185` | `0.678708` | `0.243225` | `0.552200` |
+| After-3               | `0.579614` | `0.678700` | `0.243145` | `0.555150` |
+| After-10              | `0.621742` | `0.665223` | `0.236834` | `0.583950` |
 | Elo expected baseline | `0.578497` | `0.680803` | `0.243974` |        n/a |
 | Majority baseline     |        n/a |        n/a |        n/a | `0.503600` |
 
@@ -653,33 +658,33 @@ Elo regression metrics:
 
 | Model         | White MAE | Black MAE |          White R² |          Black R² |
 | ------------- | --------: | --------: | ----------------: | ----------------: |
-| Elo after-10  |  `29.241` |  `29.376` |        `0.950259` |        `0.949865` |
+| Elo after-10  |  `28.719` |  `28.935` |        `0.948696` |        `0.947937` |
 | Mean baseline | `300.224` | `300.586` | approximately `0` | approximately `0` |
 
 Key improvements:
 
 ```text
 After-10 ROC-AUC improvement over Elo baseline:
-0.622593 - 0.578497 = 0.044096
+0.621742 - 0.578497 = 0.043245
 ```
 
 ```text
 After-10 log-loss improvement over Elo baseline:
-0.680803 - 0.663965 = 0.016838
+0.680803 - 0.665223 = 0.015580
 ```
 
 ```text
 After-10 Brier improvement over Elo baseline:
-0.243974 - 0.236364 = 0.007610
+0.243974 - 0.236834 = 0.007140
 ```
 
 ```text
 Elo MAE improvement over mean baseline:
-White: 300.224 -> 29.241
-Black: 300.586 -> 29.376
+White: 300.224 -> 28.719
+Black: 300.586 -> 28.935
 ```
 
-These results support the selected no-Stockfish boosting profile.
+These results support the selected no-Stockfish `report_best` profile. The profile improves T1 and Elo relative to the previous no-Stockfish LightGBM/XGBoost profile, while T2/T3 remain in the same broad range and should be interpreted with the usual early-game signal caveat.
 
 ---
 
@@ -734,17 +739,17 @@ Run strict lightweight profile:
 python solution.py --target-games 100000 --output-dir outputs_lightweight --model-profile lightweight
 ```
 
-Install optional boosting requirements:
+Optional LightGBM/XGBoost comparison profile:
 
 ```bash
 pip install -r requirements.txt
 pip install -r requirements-experiments.txt
 ```
 
-Run final selected no-Stockfish boosting profile:
+Run final selected no-Stockfish `report_best` profile:
 
 ```bash
-python solution.py --target-games 100000 --output-dir outputs_full --model-profile boosting
+python solution.py --target-games 100000 --output-dir outputs_full --model-profile report_best
 ```
 
 Run a smoke test:
@@ -756,7 +761,7 @@ python solution.py --target-games 100 --selected-month 2023-01 --output-dir outp
 Run a small boosting smoke test:
 
 ```bash
-python solution.py --target-games 1000 --selected-month 2023-01 --output-dir outputs_boosting_smoke --model-profile boosting
+python solution.py --target-games 1000 --selected-month 2023-01 --output-dir outputs_report_best_smoke --model-profile report_best
 ```
 
 ---
@@ -773,7 +778,7 @@ The pipeline is designed to be reproducible:
 * no Stockfish dependency in the final selected profile,
 * validation rows are not used for fitting,
 * metrics and predictions are written as plain files,
-* optional boosting dependencies are separated from the strict fallback profile.
+* optional LightGBM/XGBoost comparison dependencies are separated from the final and strict fallback profiles.
 
 For the same environment and package versions, the same command should produce the same selected month, the same eligible game order, and the same metrics.
 
@@ -806,7 +811,7 @@ Stockfish was intentionally excluded from the final default profile. This improv
 The recommended final submission command is:
 
 ```bash
-python solution.py --target-games 100000 --output-dir outputs_full --model-profile boosting
+python solution.py --target-games 100000 --output-dir outputs_full --model-profile report_best
 ```
 
 This profile is selected because it:
@@ -818,4 +823,4 @@ This profile is selected because it:
 * preserves strict leakage boundaries,
 * and remains compact enough for a coding assessment submission.
 
-The strict lightweight profile should remain available as a fallback, but the no-Stockfish boosting profile is the final recommended pipeline.
+The strict lightweight profile should remain available as a fallback, and the legacy LightGBM/XGBoost `boosting` profile remains useful for comparison. The no-Stockfish `report_best` profile is the final recommended pipeline.

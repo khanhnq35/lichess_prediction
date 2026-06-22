@@ -15,14 +15,16 @@ Full task interpretation: [01_Problem_definition.md](01_Problem_definition.md)
 
 ## 2. Final Submission Choice
 
-The final reported profile is **no-Stockfish boosting**:
+The final reported profile is **portable report-best, no Stockfish**:
 
 | Task | Final model | Main signal |
 |---|---|---|
-| Before-game White win | Logistic Regression | Pre-game Elo/time control |
-| After-3 White win | Conservative XGBoost | Early board features |
-| After-10 White win | Balanced XGBoost | Board + clock/time pressure |
-| Elo after 10 | Balanced LightGBM | Causal player history + board |
+| Before-game White win | Logistic Regression + causal history | Pre-game Elo/time control + prior same-stream history |
+| After-3 White win | LogisticRegression(C=0.5) | Early enhanced board + first-6-ply clock features |
+| After-10 White win | sklearn HistGradientBoostingClassifier | Enhanced board + clock/time pressure |
+| Elo after 10 | sklearn RandomForestRegressor | Causal player history + enhanced board |
+
+Stockfish-based experiments achieved the highest after-10 classification AUC, but they are kept as research references because they require an external engine or cached engine evaluations. The final submission profile is chosen to remain compact and reproducible from the submitted code.
 
 Pipeline details: [04_Proposal_pipeline.md](04_Proposal_pipeline.md)
 
@@ -39,14 +41,24 @@ Pipeline details: [04_Proposal_pipeline.md](04_Proposal_pipeline.md)
 
 No validation rows are used for training or preprocessing fitting. No raw `.pgn`, `.zst`, or `.pgn.zst` files are included.
 
-## 4. Final Results
+## 4. Final Results vs Baselines
 
-| Task | Metric |
-|---|---:|
-| White win before | ROC-AUC 0.5788 |
-| White win after 3 | ROC-AUC 0.5787 |
-| White win after 10 | ROC-AUC 0.6226 |
-| Elo after 10 | White/Black MAE 29.24 / 29.38 |
+| Task | Final model | Baseline | Interpretation |
+|---|---:|---:|---|
+| White win before | ROC-AUC 0.5792 | Elo expected-score ROC-AUC 0.5785 | Pre-game prediction is mostly Elo-driven; causal history gives only a tiny lift. |
+| White win after 3 | ROC-AUC 0.5796 | Elo expected-score ROC-AUC 0.5785 | After 3 full moves adds only a small lift over Elo; this horizon should not be overclaimed. |
+| White win after 10 | ROC-AUC 0.6217 | Elo expected-score ROC-AUC 0.5785 | Board state and clock/time-pressure features add meaningful signal beyond Elo. |
+| Elo after 10 | White/Black MAE 28.72 / 28.93 | Mean Elo baseline MAE 300.22 / 300.59 | Causal same-stream player history makes Elo reconstruction much stronger than a global mean baseline. |
+
+For classification, the main baseline is the Elo expected-score formula:
+
+```text
+p_white = 1 / (1 + 10 ** (-(WhiteElo - BlackElo) / 400))
+```
+
+This is a strong pre-game benchmark because Elo difference is known before the game. The after-10 model is the most useful outcome model because it improves from the Elo baseline ROC-AUC `0.5785` to `0.6217`.
+
+The low Elo MAE is **not interpreted as a cold-start rating estimator**. It is best understood as same-stream rating reconstruction: the model uses causal player-history features computed only from earlier eligible games before the current game is processed. This is leakage-safe because no current Elo, rating diff, result, future games, or validation fitting is used as an input, but the headline MAE is most reliable when the validation stream has similar repeat-player/history patterns.
 
 Full result analysis: [05_results_report.md](05_results_report.md)
 
@@ -54,10 +66,10 @@ Full result analysis: [05_results_report.md](05_results_report.md)
 
 | Finding | Decision |
 |---|---|
-| Before-game outcome is mostly Elo-driven | Keep Logistic Regression |
-| After-3 has limited signal | Use conservative XGBoost, no Stockfish |
-| After-10 benefits from board + clock features | Use balanced XGBoost |
-| Elo prediction benefits strongly from causal history | Use balanced LightGBM |
+| Before-game outcome is mostly Elo-driven | Use Logistic Regression with causal history |
+| After-3 has limited signal | Use LogisticRegression(C=0.5) from `experiment/outputs` F2; do not overclaim vs Elo baseline |
+| After-10 benefits from board + clock features | Use sklearn HistGradientBoosting |
+| Elo prediction benefits strongly from causal history | Use sklearn RandomForest |
 | Stockfish improves after-10 most | Keep as research appendix, not final pipeline |
 
 Full experiment report: [03_Experiment.md](03_Experiment.md)
@@ -95,4 +107,3 @@ Limitations and future work: [06_Limitation_and_future_work.md](06_Limitation_an
 5. [05_results_report.md](05_results_report.md)
 6. [06_Limitation_and_future_work.md](06_Limitation_and_future_work.md)
 7. [07_AI_workflow.md](07_AI_workflow.md)
-

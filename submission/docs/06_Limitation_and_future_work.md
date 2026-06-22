@@ -4,7 +4,7 @@
 
 ### 1. White-Win Prediction Is Intrinsically Noisy
 
-The best after-10 White-win model achieves a ROC-AUC of `0.6226`. This is a useful probabilistic signal, but it should not be interpreted as engine-strength game outcome prediction.
+The best final portable after-10 White-win model achieves a ROC-AUC of `0.6217`. This is a useful probabilistic signal, but it should not be interpreted as engine-strength game outcome prediction.
 
 This limitation is expected for several reasons. First, Lichess pairings often match players with relatively similar ratings, so many games are close to a 50/50 outcome before the game starts. Second, draws are treated as non-White-wins in the binary target, which makes the classification task stricter than predicting expected score. Third, many decisive events in blitz games occur after move 10, including tactical blunders, time-pressure mistakes, mouse slips, and resignations from later positions. These factors are not fully observable from early-game features.
 
@@ -32,9 +32,9 @@ The cutoff-based features also depend on the interpretation that 3 moves and 10 
 
 ### 5. Optional Boosting Dependencies
 
-The best model profile uses gradient-boosted tree models such as LightGBM and XGBoost. These models provide strong performance on tabular features while remaining much lighter than deep learning or engine-based approaches.
+The final `report_best` profile uses sklearn tree/boosting models, so it does not require LightGBM or XGBoost. Earlier LightGBM/XGBoost experiments remain useful comparison profiles and produced competitive no-Stockfish results.
 
-However, they may require additional binary wheels on some systems. To keep the solution reproducible, a stricter fallback profile is provided through `requirements.txt`. The fallback profile may be easier to install, but it can produce lower performance than the full boosting profile.
+LightGBM/XGBoost may require additional binary wheels on some systems. To keep the final solution reproducible, they are not mandatory for the submitted pipeline. A stricter lightweight fallback profile is also provided through `requirements.txt`.
 
 ### 6. No Engine Evaluation in the Final Core Pipeline
 
