@@ -4,6 +4,8 @@
 
 This document summarizes the experiments conducted for the Lichess Blitz prediction assessment. The goal was to compare several modeling approaches and select a final pipeline that balances predictive performance, reproducibility, leakage safety, and portability.
 
+GitHub repository for detailed setup instructions, source code, and experiment artifacts: https://github.com/khanhnq35/lichess_prediction
+
 The assessment contains four prediction tasks:
 
 1. Predict the probability that White wins before the game starts.

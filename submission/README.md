@@ -2,6 +2,10 @@
 
 This folder contains the final organized submission materials for the Lichess Blitz prediction assessment.
 
+GitHub repository: https://github.com/khanhnq35/lichess_prediction
+
+For the full project history, setup details, experiment artifacts, and implementation notes, see the GitHub repository above.
+
 ## Contents
 
 - `Solution.py`: reproducible Python pipeline.
