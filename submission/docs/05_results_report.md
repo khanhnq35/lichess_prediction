@@ -128,6 +128,60 @@ Final classification results:
 
 The after-10 model is the strongest White-win classifier. It improves both ranking quality and probability quality against the main Elo expected-score baseline.
 
+### Why Classification Metrics Are In The 0.5x-0.6x Range
+
+The White-win ROC-AUC values are intentionally interpreted as realistic lightweight chess-outcome results, not as engine-level prediction scores. A ROC-AUC around `0.58` before the game and `0.62` after 10 moves is expected for this setup.
+
+There are several reasons.
+
+First, the validation set is close to balanced:
+
+```text
+Validation positive rate = 0.496400
+Majority-class accuracy  = 0.503600
+```
+
+This means a naive classifier is already near `50%` accuracy, and raw accuracy has limited headroom. The goal is not to reach very high accuracy by guessing the majority class; the goal is to improve ranking and probability quality over strong baselines.
+
+Second, Lichess Blitz pairings are often between similarly rated players. When two players have similar Elo, the true pre-game outcome is naturally close to uncertain. The Elo expected-score baseline itself reaches only:
+
+```text
+Elo expected-score ROC-AUC = 0.578497
+```
+
+This shows that even the strongest pre-game signal, rating difference, only separates White wins from non-White-wins moderately under this binary target.
+
+Third, this project predicts **binary White win**, not chess expected score. Draws are counted as non-White-wins:
+
+```text
+White win = 1
+Black win or draw = 0
+```
+
+This is stricter than Elo expected score, where draws receive `0.5`. Because draws are grouped with Black wins, some games that are “good outcomes for White” under expected-score logic become negative examples under the project target.
+
+Fourth, the after-3 model only observes the first 6 plies. Most games are still in opening territory at that point. Material is usually equal, king safety has not fully developed, and the decisive tactical or time-pressure events often happen much later.
+
+Fifth, even the after-10 model only observes the first 20 plies. Blitz games can swing sharply after move 10 due to blunders, tactical misses, time pressure, mouse slips, resignations, or endgame mistakes. Those future events are deliberately unavailable to the model because using them would be leakage.
+
+Finally, the final profile does not use Stockfish or deep learning. Stockfish experiments achieved higher after-10 ROC-AUC, but they require an external engine or cached engine evaluations. The submitted model is designed to be portable, reproducible, and lightweight, so its classification performance should be judged against the Elo baseline and majority baseline rather than against engine-strength systems.
+
+The key interpretation is therefore:
+
+> ROC-AUC in the `0.58-0.62` range is not a sign that the pipeline is broken. It reflects a noisy early-game prediction problem, a strict binary target, balanced validation data, and an intentionally lightweight no-engine feature set.
+
+The meaningful result is the improvement pattern:
+
+```text
+Before-game ROC-AUC       = 0.579185
+After-3 ROC-AUC           = 0.579614
+After-10 ROC-AUC          = 0.621742
+Elo expected-score AUC    = 0.578497
+Majority baseline accuracy = 0.503600
+```
+
+The after-10 model improves meaningfully over both the before-game model and the Elo expected-score baseline, while the after-3 model remains close to pre-game expectation, which is exactly what should be expected from only 6 plies.
+
 The Elo expected-score baseline is:
 
 ```text

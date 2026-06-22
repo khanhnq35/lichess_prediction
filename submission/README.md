@@ -9,6 +9,8 @@ For the full project history, setup details, experiment artifacts, and implement
 ## Contents
 
 - `Solution.py`: reproducible Python pipeline.
+- `integer_to_roman.cpp`: interview C++ solution for integer-to-Roman conversion.
+- `roman_to_integer.cpp`: interview C++ solution for Roman-to-integer conversion.
 - `requirements.txt`: strict lightweight dependencies.
 - `requirements-experiments.txt`: optional LightGBM/XGBoost dependencies for legacy comparison experiments.
 - `Results/`: final full 100k metrics and validation predictions.

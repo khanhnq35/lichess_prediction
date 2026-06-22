@@ -6,6 +6,8 @@ __pycache__/
 *.pgn
 *.zst
 *.pgn.zst
+*.zip
+
 
 # Large/generated caches.
 experiment/outputs/cache/
